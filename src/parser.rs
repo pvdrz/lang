@@ -3,8 +3,8 @@ use std::fmt::Display;
 use crate::{
     Lang,
     ast::{
-        BinOp, Expr, ExprApp, ExprBinary, ExprIf, ExprLet, Literal, ExprUnary, File, Ident,
-        LetBinding, Pat, UnOp,
+        BinOp, Expr, ExprApp, ExprBinary, ExprIf, ExprLet, ExprUnary, File, Ident, LetBinding,
+        Literal, Pat, UnOp,
     },
     token::{Token, TokenKind},
 };
@@ -66,7 +66,7 @@ impl<'ctx> Parser<'ctx> {
 
         Ok(Expr::If(ExprIf {
             cond: Box::new(cond),
-            then_branch: Box::new(then_branch),
+            do_branch: Box::new(then_branch),
             else_branch,
         }))
     }
@@ -97,26 +97,23 @@ impl<'ctx> Parser<'ctx> {
     }
 
     fn pat(&mut self) -> Result<Pat, ParseError> {
-        let pat = if let Some(ident) = self.matches_pattern(|k| match k {
-            TokenKind::Ident(ident) => Some(ident.clone()),
-            _ => None,
-        }) {
-            Pat::Ident(Ident::new(ident))
+        let pat = if let Some(ident) = self.matches_pattern(match_ident) {
+            Pat::Ident(ident)
         } else if self.matches(&TokenKind::False) {
             Pat::Lit(Literal::False)
         } else if self.matches(&TokenKind::True) {
             Pat::Lit(Literal::True)
-        } else if let Some(int) = self.matches_pattern(|k| match k {
+        } else if let Some(int) = self.matches_pattern(|tk| match &tk.kind {
             TokenKind::Integer(int) => Some(*int),
             _ => None,
         }) {
             Pat::Lit(Literal::Int(int))
-        } else if let Some(float) = self.matches_pattern(|k| match k {
+        } else if let Some(float) = self.matches_pattern(|tk| match &tk.kind {
             TokenKind::Float(float) => Some(*float),
             _ => None,
         }) {
             Pat::Lit(Literal::Float(float))
-        } else if let Some(s) = self.matches_pattern(|k| match k {
+        } else if let Some(s) = self.matches_pattern(|tk| match &tk.kind {
             TokenKind::String(s) => Some(s.clone()),
             _ => None,
         }) {
@@ -129,18 +126,11 @@ impl<'ctx> Parser<'ctx> {
     }
 
     fn let_binding(&mut self) -> Result<LetBinding, ParseError> {
-        fn match_ident(k: &TokenKind) -> Option<String> {
-            match k {
-                TokenKind::Ident(ident) => Some(ident.clone()),
-                _ => None,
-            }
-        }
-        if let Some(ident) = self.matches_pattern(match_ident) {
-            let lhs = Ident::new(ident);
+        if let Some(lhs) = self.matches_pattern(match_ident) {
             let mut args = vec![];
             while {
                 if let Some(ident) = self.matches_pattern(match_ident) {
-                    args.push(Ident::new(ident));
+                    args.push(ident);
 
                     true
                 } else {
@@ -165,7 +155,7 @@ impl<'ctx> Parser<'ctx> {
         let mut expr = self.logic_and()?;
 
         while {
-            match self.matches_pattern(|k| match k {
+            match self.matches_pattern(|tk| match &tk.kind {
                 TokenKind::OrOr => Some(BinOp::Or),
                 _ => None,
             }) {
@@ -190,7 +180,7 @@ impl<'ctx> Parser<'ctx> {
         let mut expr = self.equality()?;
 
         while {
-            match self.matches_pattern(|k| match k {
+            match self.matches_pattern(|tk| match &tk.kind {
                 TokenKind::AndAnd => Some(BinOp::And),
                 _ => None,
             }) {
@@ -215,7 +205,7 @@ impl<'ctx> Parser<'ctx> {
         let mut expr = self.comparison()?;
 
         while {
-            match self.matches_pattern(|k| match k {
+            match self.matches_pattern(|tk| match &tk.kind {
                 TokenKind::BangEqual => Some(BinOp::Ne),
                 TokenKind::EqualEqual => Some(BinOp::Eq),
                 _ => None,
@@ -241,7 +231,7 @@ impl<'ctx> Parser<'ctx> {
         let mut expr = self.term()?;
 
         while {
-            match self.matches_pattern(|k| match k {
+            match self.matches_pattern(|tk| match &tk.kind {
                 TokenKind::Greater => Some(BinOp::Gt),
                 TokenKind::GreaterEqual => Some(BinOp::Ge),
                 TokenKind::Less => Some(BinOp::Lt),
@@ -269,7 +259,7 @@ impl<'ctx> Parser<'ctx> {
         let mut expr = self.factor()?;
 
         while {
-            match self.matches_pattern(|k| match k {
+            match self.matches_pattern(|tk| match &tk.kind {
                 TokenKind::Minus => Some(BinOp::Sub),
                 TokenKind::Plus => Some(BinOp::Add),
                 _ => None,
@@ -294,7 +284,7 @@ impl<'ctx> Parser<'ctx> {
     fn factor(&mut self) -> Result<Expr, ParseError> {
         let mut expr = self.unary()?;
         while {
-            match self.matches_pattern(|k| match k {
+            match self.matches_pattern(|tk| match &tk.kind {
                 TokenKind::Slash => Some(BinOp::Div),
                 TokenKind::Star => Some(BinOp::Mul),
                 _ => None,
@@ -317,7 +307,7 @@ impl<'ctx> Parser<'ctx> {
     }
 
     fn unary(&mut self) -> Result<Expr, ParseError> {
-        if let Some(op) = self.matches_pattern(|k| match k {
+        if let Some(op) = self.matches_pattern(|tk| match &tk.kind {
             TokenKind::Bang => Some(UnOp::Not),
             TokenKind::Minus => Some(UnOp::Neg),
             _ => None,
@@ -359,26 +349,23 @@ impl<'ctx> Parser<'ctx> {
             Expr::Lit(Literal::False)
         } else if self.matches(&TokenKind::True) {
             Expr::Lit(Literal::True)
-        } else if let Some(int) = self.matches_pattern(|k| match k {
+        } else if let Some(int) = self.matches_pattern(|tk| match &tk.kind {
             TokenKind::Integer(int) => Some(*int),
             _ => None,
         }) {
             Expr::Lit(Literal::Int(int))
-        } else if let Some(float) = self.matches_pattern(|k| match k {
+        } else if let Some(float) = self.matches_pattern(|tk| match &tk.kind {
             TokenKind::Float(float) => Some(*float),
             _ => None,
         }) {
             Expr::Lit(Literal::Float(float))
-        } else if let Some(s) = self.matches_pattern(|k| match k {
+        } else if let Some(s) = self.matches_pattern(|tk| match &tk.kind {
             TokenKind::String(s) => Some(s.clone()),
             _ => None,
         }) {
             Expr::Lit(Literal::Str(s))
-        } else if let Some(ident) = self.matches_pattern(|k| match k {
-            TokenKind::Ident(ident) => Some(ident.clone()),
-            _ => None,
-        }) {
-            Expr::Ident(Ident::new(ident))
+        } else if let Some(ident) = self.matches_pattern(match_ident) {
+            Expr::Ident(ident)
         } else if self.matches(&TokenKind::LeftParen) {
             let expr = self.expression()?;
             self.consume(&TokenKind::RightParen, "Expect ')' after epression.")?;
@@ -392,7 +379,7 @@ impl<'ctx> Parser<'ctx> {
         Ok(expr)
     }
 
-    fn matches_pattern<T, F: Fn(&TokenKind) -> Option<T>>(&mut self, pat: F) -> Option<T> {
+    fn matches_pattern<T, F: Fn(&Token) -> Option<T>>(&mut self, pat: F) -> Option<T> {
         if let Some(output) = self.check_pattern(pat) {
             self.advance();
             Some(output)
@@ -402,20 +389,21 @@ impl<'ctx> Parser<'ctx> {
     }
 
     fn matches(&mut self, kind: &TokenKind) -> bool {
-        self.matches_pattern(|k| (k == kind).then_some(()))
+        self.matches_pattern(|tk| (&tk.kind == kind).then_some(()))
             .is_some()
     }
 
-    fn check_pattern<T, F: Fn(&TokenKind) -> Option<T>>(&self, pat: F) -> Option<T> {
+    fn check_pattern<T, F: Fn(&Token) -> Option<T>>(&self, pat: F) -> Option<T> {
         if self.is_at_end() {
             None
         } else {
-            pat(&self.peek().kind)
+            pat(&self.peek())
         }
     }
 
     fn check(&self, kind: &TokenKind) -> bool {
-        self.check_pattern(|k| (k == kind).then_some(())).is_some()
+        self.check_pattern(|k| (&k.kind == kind).then_some(()))
+            .is_some()
     }
 
     fn advance(&mut self) -> &Token {
@@ -471,3 +459,10 @@ impl<'ctx> Parser<'ctx> {
 
 #[derive(Debug)]
 pub(crate) struct ParseError {}
+
+fn match_ident(tk: &Token) -> Option<Ident> {
+    match &tk.kind {
+        TokenKind::Ident(ident) => Some(Ident::new(ident.clone(), tk.line)),
+        _ => None,
+    }
+}

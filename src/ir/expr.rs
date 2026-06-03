@@ -1,12 +1,9 @@
-use crate::ast::{
-    Ident, LetBinding, Literal, Pat,
-    op::{BinOp, UnOp},
-};
+use crate::ir::{BinOp, DefId, LetBinding, Literal, Pat, UnOp};
 
 #[derive(Debug)]
 pub(crate) enum Expr {
     Lit(Literal),
-    Ident(Ident),
+    Ident(DefId),
     Unary(ExprUnary),
     Binary(ExprBinary),
     Group(ExprGroup),
@@ -37,9 +34,7 @@ pub(crate) struct ExprGroup {
 #[derive(Debug)]
 pub(crate) struct ExprIf {
     pub(crate) cond: Box<Expr>,
-    // This could be a block of statements
     pub(crate) do_branch: Box<Expr>,
-    // This could be a block of statements
     pub(crate) else_branch: Option<Box<Expr>>,
 }
 

@@ -91,7 +91,7 @@ pub(crate) fn visit_file<V: Visitor + ?Sized>(v: &mut V, file: &File) {
 
 pub(crate) fn visit_expr<V: Visitor + ?Sized>(v: &mut V, expr: &Expr) {
     match expr {
-        Expr::Lit(expr_lit) => v.visit_literal(expr_lit),
+        Expr::Lit(literal) => v.visit_literal(literal),
         Expr::Ident(ident) => v.visit_ident(ident),
         Expr::Unary(expr_unary) => v.visit_expr_unary(expr_unary),
         Expr::Binary(expr_binary) => v.visit_expr_binary(expr_binary),
@@ -126,7 +126,7 @@ pub(crate) fn visit_expr_group<V: Visitor + ?Sized>(v: &mut V, expr_group: &Expr
 
 pub(crate) fn visit_expr_if<V: Visitor + ?Sized>(v: &mut V, expr_if: &ExprIf) {
     v.visit_expr(&expr_if.cond);
-    v.visit_expr(&expr_if.then_branch);
+    v.visit_expr(&expr_if.do_branch);
     if let Some(expr) = expr_if.else_branch.as_ref() {
         v.visit_expr(expr);
     }

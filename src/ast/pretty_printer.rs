@@ -48,14 +48,14 @@ impl Visitor for PrettyPrinter {
 
         for (pat, expr) in &expr_case.arms {
             self.visit_pat(pat);
-            
+
             let _ = self.buf.write_str(" -> ");
 
             self.visit_expr(expr);
 
             let _ = self.buf.write_str(", ");
         }
-        
+
         let _ = self.buf.write_str("end");
     }
 
@@ -120,7 +120,7 @@ impl Visitor for PrettyPrinter {
         self.visit_expr(&expr_if.cond);
 
         let _ = self.buf.write_str(" do ");
-        self.visit_expr(&expr_if.then_branch);
+        self.visit_expr(&expr_if.do_branch);
 
         if let Some(expr) = expr_if.else_branch.as_ref() {
             let _ = self.buf.write_str(" else ");

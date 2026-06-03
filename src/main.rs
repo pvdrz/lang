@@ -1,4 +1,6 @@
 mod ast;
+mod ir;
+mod lowering;
 mod parser;
 mod scanner;
 mod token;
@@ -7,6 +9,7 @@ use std::{cell::RefCell, fmt::Display, io, path::Path};
 
 use crate::{
     ast::pretty_printer::pretty_print,
+    lowering::Resolver,
     parser::Parser,
     scanner::Scanner,
     token::{Token, TokenKind},
@@ -42,9 +45,20 @@ impl Lang {
     fn run(&self, source: String) {
         let scanner = Scanner::new(source, self);
         let tokens = scanner.scan_tokens();
+        if *self.had_error.borrow() {
+            return;
+        }
+
         let mut parser = Parser::new(tokens, self);
-        if let Ok(file) = parser.parse() {
-            println!("{}", pretty_print(&file));
+        let Ok(file) = parser.parse() else {
+            return;
+        };
+        println!("{}", pretty_print(&file));
+
+        let mut resolver = Resolver::new(self);
+        let _file = resolver.lower_file(&file);
+        if *self.had_error.borrow() {
+            return;
         }
     }
 

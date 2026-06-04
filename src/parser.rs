@@ -370,12 +370,12 @@ impl<'ctx> Parser<'ctx> {
             Expr::Ident(ident)
         } else if self.matches(&TokenKind::LeftParen) {
             let expr = self.expression()?;
-            self.consume(&TokenKind::RightParen, "Expect ')' after epression.")?;
+            self.consume(&TokenKind::RightParen, "Expected ')' after epression.")?;
             Expr::Group(crate::ast::ExprGroup {
                 expr: Box::new(expr),
             })
         } else {
-            return self.err(self.peek(), "Expect expression.");
+            return self.err(self.peek(), "Expected expression.");
         };
 
         Ok(expr)

@@ -1,6 +1,6 @@
 use crate::ast::{
-    Expr, ExprApp, ExprBinary, ExprCase, ExprGroup, ExprIf, ExprLet, ExprUnary, Ident, LetBinding,
-    Literal, Pat,
+    Expr, ExprApp, ExprBinary, ExprCase, ExprGroup, ExprIf, ExprLet, ExprUnary, Ident, Literal,
+    Pat,
     op::{BinOp, UnOp},
 };
 
@@ -11,10 +11,6 @@ pub(crate) trait Visitor {
 
     fn visit_pat(&mut self, pat: &Pat) {
         visit_pat(self, pat);
-    }
-
-    fn visit_let_binding(&mut self, binding: &LetBinding) {
-        visit_let_binding(self, binding);
     }
 
     fn visit_expr(&mut self, expr: &Expr) {
@@ -69,14 +65,6 @@ pub(crate) fn visit_pat<V: Visitor + ?Sized>(v: &mut V, pat: &Pat) {
         Pat::Lit(expr_lit) => v.visit_literal(expr_lit),
         Pat::Ident(ident) => v.visit_ident(ident),
     }
-}
-
-pub(crate) fn visit_let_binding<V: Visitor + ?Sized>(v: &mut V, binding: &LetBinding) {
-    v.visit_ident(&binding.lhs);
-    for ident in &binding.args {
-        v.visit_ident(ident);
-    }
-    v.visit_expr(&binding.rhs);
 }
 
 pub(crate) fn visit_expr<V: Visitor + ?Sized>(v: &mut V, expr: &Expr) {
@@ -137,6 +125,10 @@ pub(crate) fn visit_expr_app<V: Visitor + ?Sized>(v: &mut V, expr_app: &ExprApp)
 }
 
 pub(crate) fn visit_expr_let<V: Visitor + ?Sized>(v: &mut V, expr_let: &ExprLet) {
-    v.visit_let_binding(&expr_let.binding);
-    v.visit_expr(&expr_let.tail);
+    v.visit_ident(&expr_let.lhs);
+    for ident in &expr_let.args {
+        v.visit_ident(ident);
+    }
+    v.visit_expr(&expr_let.rhs);
+    v.visit_expr(&expr_let.body);
 }

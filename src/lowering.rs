@@ -87,24 +87,6 @@ impl<'ctx> Resolver<'ctx> {
         }
     }
 
-    fn lower_let_binding(&mut self, binding: &ast::LetBinding) -> ir::LetBinding<MonoTy> {
-        let lhs = self.bind(&binding.lhs);
-        let ret_ty = self.mono_var_gen.generate();
-        let args = binding
-            .args
-            .iter()
-            .map(|arg| (self.bind(arg), self.mono_var_gen.generate()))
-            .collect();
-        let rhs = self.lower_expr(&binding.rhs);
-
-        ir::LetBinding {
-            lhs,
-            ret_ty,
-            args,
-            rhs: Box::new(rhs),
-        }
-    }
-
     pub(crate) fn lower_expr(&mut self, expr: &ast::Expr) -> ir::Expr<MonoTy> {
         match expr {
             ast::Expr::Lit(literal) => ir::Expr::Lit(self.lower_literal(literal)),
@@ -200,14 +182,24 @@ impl<'ctx> Resolver<'ctx> {
     fn lower_expr_let(&mut self, expr_let: &ast::ExprLet) -> ir::ExprLet<MonoTy> {
         self.enter_scope();
 
-        let binding = self.lower_let_binding(&expr_let.binding);
-        let tail = self.lower_expr(&expr_let.tail);
+        let lhs = self.bind(&expr_let.lhs);
+        let ret_ty = self.mono_var_gen.generate();
+        let args = expr_let
+            .args
+            .iter()
+            .map(|arg| (self.bind(arg), self.mono_var_gen.generate()))
+            .collect();
+        let rhs = self.lower_expr(&expr_let.rhs);
+        let body = self.lower_expr(&expr_let.body);
 
         self.exit_scope();
 
         ir::ExprLet {
-            binding,
-            tail: Box::new(tail),
+            lhs,
+            ret_ty,
+            args,
+            rhs: Box::new(rhs),
+            body: Box::new(body),
         }
     }
 

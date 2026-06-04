@@ -1,4 +1,4 @@
-use crate::ir::{BinOp, DefId, LetBinding, Literal, Pat, UnOp};
+use crate::ir::{BinOp, DefId, Literal, Pat, UnOp};
 
 #[derive(Debug)]
 pub(crate) enum Expr<T> {
@@ -46,8 +46,11 @@ pub(crate) struct ExprCase<T> {
 
 #[derive(Debug)]
 pub(crate) struct ExprLet<T> {
-    pub(crate) binding: LetBinding<T>,
-    pub(crate) tail: Box<Expr<T>>,
+    pub(crate) lhs: DefId,
+    pub(crate) ret_ty: T,
+    pub(crate) args: Vec<(DefId, T)>,
+    pub(crate) rhs: Box<Expr<T>>,
+    pub(crate) body: Box<Expr<T>>,
 }
 
 #[derive(Debug)]

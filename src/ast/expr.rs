@@ -1,5 +1,5 @@
 use crate::ast::{
-    Ident, LetBinding, Literal, Pat,
+    Ident, Literal, Pat,
     op::{BinOp, UnOp},
 };
 
@@ -51,8 +51,10 @@ pub(crate) struct ExprCase {
 
 #[derive(Debug)]
 pub(crate) struct ExprLet {
-    pub(crate) binding: LetBinding,
-    pub(crate) tail: Box<Expr>,
+    pub(crate) lhs: Ident,
+    pub(crate) args: Vec<Ident>,
+    pub(crate) rhs: Box<Expr>,
+    pub(crate) body: Box<Expr>,
 }
 
 #[derive(Debug)]

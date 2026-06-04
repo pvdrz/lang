@@ -59,18 +59,19 @@ impl Visitor for PrettyPrinter {
         let _ = self.buf.write_str("end");
     }
 
-    fn visit_let_binding(&mut self, binding: &super::LetBinding) {
+    fn visit_expr_let(&mut self, expr_let: &super::ExprLet) {
         let _ = self.buf.write_str("let ");
-        self.visit_ident(&binding.lhs);
+        self.visit_ident(&expr_let.lhs);
 
-        for ident in &binding.args {
+        for ident in &expr_let.args {
             let _ = self.buf.write_str(" ");
             self.visit_ident(ident);
         }
 
         let _ = self.buf.write_str(" = (");
-        self.visit_expr(&binding.rhs);
+        self.visit_expr(&expr_let.rhs);
         let _ = self.buf.write_str(") ");
+        self.visit_expr(&expr_let.body);
     }
 
     fn visit_expr_unary(&mut self, expr_unary: &super::ExprUnary) {

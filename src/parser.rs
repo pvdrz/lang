@@ -3,8 +3,7 @@ use std::fmt::Display;
 use crate::{
     Lang,
     ast::{
-        BinOp, Expr, ExprApp, ExprBinary, ExprIf, ExprLet, ExprUnary, Ident, LetBinding, Literal,
-        Pat, UnOp,
+        BinOp, Expr, ExprApp, ExprBinary, ExprIf, ExprLet, ExprUnary, Ident, Literal, Pat, UnOp,
     },
     token::{Token, TokenKind},
 };
@@ -34,12 +33,33 @@ impl<'ctx> Parser<'ctx> {
         } else if self.matches(&TokenKind::Case) {
             self.case()
         } else if self.matches(&TokenKind::Let) {
-            let binding = self.let_binding()?;
-            let tail = self.expression()?;
-            Ok(Expr::Let(ExprLet {
-                binding,
-                tail: Box::new(tail),
-            }))
+            if let Some(lhs) = self.matches_pattern(match_ident) {
+                let mut args = vec![];
+                while {
+                    if let Some(ident) = self.matches_pattern(match_ident) {
+                        args.push(ident);
+
+                        true
+                    } else {
+                        false
+                    }
+                } {}
+
+                self.consume(&TokenKind::Equal, "Expected `=` in let binding.")?;
+                let rhs = self.expression()?;
+
+                self.consume(&TokenKind::Semicolon, "Expected `;` in let binding.")?;
+
+                let body = self.expression()?;
+                Ok(Expr::Let(ExprLet {
+                    lhs,
+                    args,
+                    rhs: Box::new(rhs),
+                    body: Box::new(body),
+                }))
+            } else {
+                self.err(self.peek(), "Expected identifier in let binding.")
+            }
         } else {
             self.logic_or()
         }
@@ -118,34 +138,6 @@ impl<'ctx> Parser<'ctx> {
         };
 
         Ok(pat)
-    }
-
-    fn let_binding(&mut self) -> Result<LetBinding, ParseError> {
-        if let Some(lhs) = self.matches_pattern(match_ident) {
-            let mut args = vec![];
-            while {
-                if let Some(ident) = self.matches_pattern(match_ident) {
-                    args.push(ident);
-
-                    true
-                } else {
-                    false
-                }
-            } {}
-
-            self.consume(&TokenKind::Equal, "Expected `=` in let binding.")?;
-            let rhs = self.expression()?;
-
-            self.consume(&TokenKind::Semicolon, "Expected `;` in let binding.")?;
-
-            Ok(LetBinding {
-                lhs,
-                args,
-                rhs: Box::new(rhs),
-            })
-        } else {
-            self.err(self.peek(), "Expected identifier in let binding.")
-        }
     }
 
     fn logic_or(&mut self) -> Result<Expr, ParseError> {

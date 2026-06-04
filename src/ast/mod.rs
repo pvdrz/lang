@@ -54,13 +54,6 @@ pub(crate) enum Literal {
 }
 
 #[derive(Debug)]
-pub(crate) struct LetBinding {
-    pub(crate) lhs: Ident,
-    pub(crate) args: Vec<Ident>,
-    pub(crate) rhs: Box<Expr>,
-}
-
-#[derive(Debug)]
 pub(crate) enum Pat {
     Lit(Literal),
     Ident(Ident),

@@ -14,14 +14,6 @@ impl DefId {
 def_gen!(DefIdGen => DefId);
 
 #[derive(Debug)]
-pub(crate) struct LetBinding<T> {
-    pub(crate) lhs: DefId,
-    pub(crate) ret_ty: T,
-    pub(crate) args: Vec<(DefId, T)>,
-    pub(crate) rhs: Box<Expr<T>>,
-}
-
-#[derive(Debug)]
 pub(crate) enum Pat {
     Lit(Literal),
     Ident(DefId),

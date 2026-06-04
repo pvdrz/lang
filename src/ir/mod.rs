@@ -4,7 +4,7 @@ pub(crate) use crate::ast::{BinOp, Literal, UnOp};
 use crate::def_gen;
 pub(crate) use crate::ir::expr::*;
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub(crate) struct DefId(usize);
 
 impl DefId {

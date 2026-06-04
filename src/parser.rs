@@ -24,7 +24,13 @@ impl<'ctx> Parser<'ctx> {
     }
 
     pub(crate) fn parse(&mut self) -> Result<Expr, ParseError> {
-        self.expression()
+        let expr = self.expression()?;
+        let next_token = self.peek();
+        if next_token.kind != TokenKind::EOF {
+            return self.err(next_token, "Unexpected token.");
+        }
+
+        Ok(expr)
     }
 
     fn expression(&mut self) -> Result<Expr, ParseError> {

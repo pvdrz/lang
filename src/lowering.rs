@@ -4,7 +4,7 @@ use crate::{
     Lang,
     ast::{self, Ident},
     ir::{self, DefId, DefIdGen},
-    ty::mono::{MonoTy, MonoVarGen},
+    ty::mono::{MonoTy, VarMonoTyGen},
 };
 
 pub(crate) struct Resolver<'ctx> {
@@ -12,7 +12,7 @@ pub(crate) struct Resolver<'ctx> {
     scope: Scope,
     scopes: Vec<Scope>,
     def_id_gen: DefIdGen,
-    mono_var_gen: &'ctx mut MonoVarGen,
+    var_ty_gen: &'ctx mut VarMonoTyGen,
 }
 
 #[derive(Default)]
@@ -21,13 +21,13 @@ struct Scope {
 }
 
 impl<'ctx> Resolver<'ctx> {
-    pub(crate) fn new(lang: &'ctx Lang, mono_var_gen: &'ctx mut MonoVarGen) -> Self {
+    pub(crate) fn new(lang: &'ctx Lang, var_ty_gen: &'ctx mut VarMonoTyGen) -> Self {
         Self {
             lang,
             scope: Scope::default(),
             scopes: Vec::new(),
             def_id_gen: DefIdGen::new(),
-            mono_var_gen,
+            var_ty_gen,
         }
     }
 
@@ -183,11 +183,11 @@ impl<'ctx> Resolver<'ctx> {
         self.enter_scope();
 
         let lhs = self.bind(&expr_let.lhs);
-        let ret_ty = self.mono_var_gen.generate();
+        let ret_ty = MonoTy::Var(self.var_ty_gen.generate());
         let args = expr_let
             .args
             .iter()
-            .map(|arg| (self.bind(arg), self.mono_var_gen.generate()))
+            .map(|arg| (self.bind(arg), MonoTy::Var(self.var_ty_gen.generate())))
             .collect();
         let rhs = self.lower_expr(&expr_let.rhs);
         let body = self.lower_expr(&expr_let.body);

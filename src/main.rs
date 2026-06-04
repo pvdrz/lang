@@ -17,7 +17,8 @@ use crate::{
     parser::Parser,
     scanner::Scanner,
     token::{Token, TokenKind},
-    ty::mono::MonoVarGen,
+    ty::mono::VarMonoTyGen,
+    tycheck::TyChecker,
 };
 
 struct Lang {
@@ -60,12 +61,19 @@ impl Lang {
         };
         println!("{}", pretty_print(&file));
 
-        let mut mono_var_gen = MonoVarGen::new();
-        let mut resolver = Resolver::new(self, &mut mono_var_gen);
-        let _file = resolver.lower_expr(&file);
+        let mut var_ty_gen = VarMonoTyGen::new();
+        let mut resolver = Resolver::new(self, &mut var_ty_gen);
+        let mut file = resolver.lower_expr(&file);
         if *self.had_error.borrow() {
             return;
         }
+        let mut checker = TyChecker::new(self, &mut var_ty_gen);
+        let file_ty = checker.infer_type(&mut file);
+        if *self.had_error.borrow() {
+            return;
+        }
+
+        println!("Program has type: {file_ty}");
     }
 
     fn parse_error(&self, token: &Token, msg: impl Display) {

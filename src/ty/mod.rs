@@ -5,6 +5,8 @@ pub(crate) enum Ty {
     Float,
     String,
     Bool,
+    Unit,
+    Never,
     Fn(FnTy),
 }
 

@@ -4,6 +4,7 @@ use crate::{
     Lang,
     ast::{self, Ident},
     ir::{self, DefId},
+    ty::mono::{MonoTy, MonoVarGen},
 };
 
 pub(crate) struct Resolver<'ctx> {
@@ -11,6 +12,7 @@ pub(crate) struct Resolver<'ctx> {
     scope: Scope,
     scopes: Vec<Scope>,
     count: usize,
+    mono_var_gen: &'ctx mut MonoVarGen,
 }
 
 #[derive(Default)]
@@ -19,12 +21,13 @@ struct Scope {
 }
 
 impl<'ctx> Resolver<'ctx> {
-    pub(crate) fn new(lang: &'ctx Lang) -> Self {
+    pub(crate) fn new(lang: &'ctx Lang, mono_var_gen: &'ctx mut MonoVarGen) -> Self {
         Self {
             lang,
             scope: Scope::default(),
             scopes: Vec::new(),
             count: 0,
+            mono_var_gen,
         }
     }
 
@@ -85,19 +88,25 @@ impl<'ctx> Resolver<'ctx> {
         }
     }
 
-    fn lower_let_binding(&mut self, binding: &ast::LetBinding) -> ir::LetBinding {
+    fn lower_let_binding(&mut self, binding: &ast::LetBinding) -> ir::LetBinding<MonoTy> {
         let lhs = self.bind(&binding.lhs);
-        let args = binding.args.iter().map(|arg| self.bind(arg)).collect();
+        let ret_ty = self.mono_var_gen.generate();
+        let args = binding
+            .args
+            .iter()
+            .map(|arg| (self.bind(arg), self.mono_var_gen.generate()))
+            .collect();
         let rhs = self.lower_expr(&binding.rhs);
 
         ir::LetBinding {
             lhs,
+            ret_ty,
             args,
             rhs: Box::new(rhs),
         }
     }
 
-    pub(crate) fn lower_file(&mut self, file: &ast::File) -> ir::File {
+    pub(crate) fn lower_file(&mut self, file: &ast::File) -> ir::File<MonoTy> {
         self.enter_scope();
 
         let bindings = file
@@ -110,7 +119,7 @@ impl<'ctx> Resolver<'ctx> {
         ir::File { bindings }
     }
 
-    fn lower_expr(&mut self, expr: &ast::Expr) -> ir::Expr {
+    fn lower_expr(&mut self, expr: &ast::Expr) -> ir::Expr<MonoTy> {
         match expr {
             ast::Expr::Lit(literal) => ir::Expr::Lit(self.lower_literal(literal)),
             ast::Expr::Ident(ident) => ir::Expr::Ident(self.lower_ident(ident)),
@@ -128,7 +137,7 @@ impl<'ctx> Resolver<'ctx> {
         literal.clone()
     }
 
-    fn lower_expr_unary(&mut self, expr_unary: &ast::ExprUnary) -> ir::ExprUnary {
+    fn lower_expr_unary(&mut self, expr_unary: &ast::ExprUnary) -> ir::ExprUnary<MonoTy> {
         let op = self.lower_un_op(&expr_unary.op);
         let expr = self.lower_expr(&expr_unary.expr);
 
@@ -142,7 +151,7 @@ impl<'ctx> Resolver<'ctx> {
         *un_op
     }
 
-    fn lower_expr_binary(&mut self, expr_binary: &ast::ExprBinary) -> ir::ExprBinary {
+    fn lower_expr_binary(&mut self, expr_binary: &ast::ExprBinary) -> ir::ExprBinary<MonoTy> {
         let lhs = self.lower_expr(&expr_binary.lhs);
         let op = self.lower_bin_op(&expr_binary.op);
         let rhs = self.lower_expr(&expr_binary.rhs);
@@ -158,7 +167,7 @@ impl<'ctx> Resolver<'ctx> {
         *bin_op
     }
 
-    fn lower_expr_group(&mut self, expr_group: &ast::ExprGroup) -> ir::ExprGroup {
+    fn lower_expr_group(&mut self, expr_group: &ast::ExprGroup) -> ir::ExprGroup<MonoTy> {
         let expr = self.lower_expr(&expr_group.expr);
 
         ir::ExprGroup {
@@ -166,7 +175,7 @@ impl<'ctx> Resolver<'ctx> {
         }
     }
 
-    fn lower_expr_if(&mut self, expr_if: &ast::ExprIf) -> ir::ExprIf {
+    fn lower_expr_if(&mut self, expr_if: &ast::ExprIf) -> ir::ExprIf<MonoTy> {
         let cond = self.lower_expr(&expr_if.cond);
         let do_branch = self.lower_expr(&expr_if.do_branch);
         let else_branch = expr_if
@@ -181,7 +190,7 @@ impl<'ctx> Resolver<'ctx> {
         }
     }
 
-    fn lower_expr_case(&mut self, expr_case: &ast::ExprCase) -> ir::ExprCase {
+    fn lower_expr_case(&mut self, expr_case: &ast::ExprCase) -> ir::ExprCase<MonoTy> {
         let expr = self.lower_expr(&expr_case.expr);
         let arms = expr_case
             .arms
@@ -202,7 +211,7 @@ impl<'ctx> Resolver<'ctx> {
         }
     }
 
-    fn lower_expr_let(&mut self, expr_let: &ast::ExprLet) -> ir::ExprLet {
+    fn lower_expr_let(&mut self, expr_let: &ast::ExprLet) -> ir::ExprLet<MonoTy> {
         self.enter_scope();
 
         let binding = self.lower_let_binding(&expr_let.binding);
@@ -216,7 +225,7 @@ impl<'ctx> Resolver<'ctx> {
         }
     }
 
-    fn lower_expr_app(&mut self, expr_app: &ast::ExprApp) -> ir::ExprApp {
+    fn lower_expr_app(&mut self, expr_app: &ast::ExprApp) -> ir::ExprApp<MonoTy> {
         let func = self.lower_expr(&expr_app.func);
         let arg = self.lower_expr(&expr_app.arg);
 

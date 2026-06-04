@@ -4,6 +4,8 @@ mod lowering;
 mod parser;
 mod scanner;
 mod token;
+mod ty;
+mod tycheck;
 
 use std::{cell::RefCell, fmt::Display, io, path::Path};
 
@@ -13,6 +15,7 @@ use crate::{
     parser::Parser,
     scanner::Scanner,
     token::{Token, TokenKind},
+    ty::mono::MonoVarGen,
 };
 
 struct Lang {
@@ -55,7 +58,8 @@ impl Lang {
         };
         println!("{}", pretty_print(&file));
 
-        let mut resolver = Resolver::new(self);
+        let mut mono_var_gen = MonoVarGen::new();
+        let mut resolver = Resolver::new(self, &mut mono_var_gen);
         let _file = resolver.lower_file(&file);
         if *self.had_error.borrow() {
             return;

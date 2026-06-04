@@ -13,15 +13,16 @@ impl DefId {
 }
 
 #[derive(Debug)]
-pub(crate) struct LetBinding {
+pub(crate) struct LetBinding<T> {
     pub(crate) lhs: DefId,
-    pub(crate) args: Vec<DefId>,
-    pub(crate) rhs: Box<Expr>,
+    pub(crate) ret_ty: T,
+    pub(crate) args: Vec<(DefId, T)>,
+    pub(crate) rhs: Box<Expr<T>>,
 }
 
 #[derive(Debug)]
-pub(crate) struct File {
-    pub(crate) bindings: Vec<LetBinding>,
+pub(crate) struct File<T> {
+    pub(crate) bindings: Vec<LetBinding<T>>,
 }
 
 #[derive(Debug)]

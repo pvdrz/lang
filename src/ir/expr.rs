@@ -6,7 +6,6 @@ pub(crate) enum Expr<T> {
     Ident(DefId),
     Unary(ExprUnary<T>),
     Binary(ExprBinary<T>),
-    Group(ExprGroup<T>),
     If(ExprIf<T>),
     Case(ExprCase<T>),
     Let(ExprLet<T>),
@@ -24,11 +23,6 @@ pub(crate) struct ExprBinary<T> {
     pub(crate) lhs: Box<Expr<T>>,
     pub(crate) op: BinOp,
     pub(crate) rhs: Box<Expr<T>>,
-}
-
-#[derive(Debug)]
-pub(crate) struct ExprGroup<T> {
-    pub(crate) expr: Box<Expr<T>>,
 }
 
 #[derive(Debug)]

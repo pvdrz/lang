@@ -3,8 +3,7 @@ use std::collections::HashMap;
 use crate::{
     Lang,
     ir::{
-        DefId, Expr, ExprApp, ExprBinary, ExprCase, ExprGroup, ExprIf, ExprLet, ExprUnary, Literal,
-        Pat, UnOp,
+        DefId, Expr, ExprApp, ExprBinary, ExprCase, ExprIf, ExprLet, ExprUnary, Literal, Pat, UnOp,
     },
     ty::mono::{FnMonoTy, MonoTy, VarMonoTy, VarMonoTyGen},
 };
@@ -42,7 +41,6 @@ impl<'ctx> TyChecker<'ctx> {
             Expr::Ident(def_id) => self.type_def_id(def_id),
             Expr::Unary(expr_unary) => self.type_expr_unary(expr_unary),
             Expr::Binary(expr_binary) => self.type_expr_binary(expr_binary),
-            Expr::Group(expr_group) => self.type_expr_group(expr_group),
             Expr::If(expr_if) => self.type_expr_if(expr_if),
             Expr::Case(expr_case) => self.type_expr_case(expr_case),
             Expr::Let(expr_let) => self.type_expr_let(expr_let),
@@ -79,10 +77,6 @@ impl<'ctx> TyChecker<'ctx> {
         let rhs_ty = self.type_expr(&expr_binary.rhs);
         self.constraints.push((lhs_ty.clone(), rhs_ty));
         lhs_ty
-    }
-
-    fn type_expr_group(&mut self, expr_group: &ExprGroup<MonoTy>) -> MonoTy {
-        self.type_expr(&expr_group.expr)
     }
 
     fn type_expr_if(&mut self, expr_if: &ExprIf<MonoTy>) -> MonoTy {
@@ -211,7 +205,6 @@ impl<'ctx> TyChecker<'ctx> {
             Expr::Lit(_) | Expr::Ident(_) => (),
             Expr::Unary(expr_unary) => self.substitute_expr_unary(expr_unary),
             Expr::Binary(expr_binary) => self.substitute_expr_binary(expr_binary),
-            Expr::Group(expr_group) => self.substitute_expr_group(expr_group),
             Expr::If(expr_if) => self.substitute_expr_if(expr_if),
             Expr::Case(expr_case) => self.substitute_expr_case(expr_case),
             Expr::Let(expr_let) => self.substitute_expr_let(expr_let),
@@ -226,10 +219,6 @@ impl<'ctx> TyChecker<'ctx> {
     fn substitute_expr_binary(&self, expr_binary: &mut ExprBinary<MonoTy>) {
         self.substitute_expr(&mut expr_binary.lhs);
         self.substitute_expr(&mut expr_binary.rhs);
-    }
-
-    fn substitute_expr_group(&self, expr_group: &mut ExprGroup<MonoTy>) {
-        self.substitute_expr(&mut expr_group.expr);
     }
 
     fn substitute_expr_if(&self, expr_if: &mut ExprIf<MonoTy>) {

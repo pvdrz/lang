@@ -93,7 +93,7 @@ impl<'ctx> Resolver<'ctx> {
             ast::Expr::Ident(ident) => ir::Expr::Ident(self.lower_ident(ident)),
             ast::Expr::Unary(expr_unary) => ir::Expr::Unary(self.lower_expr_unary(expr_unary)),
             ast::Expr::Binary(expr_binary) => ir::Expr::Binary(self.lower_expr_binary(expr_binary)),
-            ast::Expr::Group(expr_group) => ir::Expr::Group(self.lower_expr_group(expr_group)),
+            ast::Expr::Group(expr_group) => self.lower_expr_group(expr_group),
             ast::Expr::If(expr_if) => ir::Expr::If(self.lower_expr_if(expr_if)),
             ast::Expr::Case(expr_case) => ir::Expr::Case(self.lower_expr_case(expr_case)),
             ast::Expr::Let(expr_let) => ir::Expr::Let(self.lower_expr_let(expr_let)),
@@ -135,12 +135,8 @@ impl<'ctx> Resolver<'ctx> {
         *bin_op
     }
 
-    fn lower_expr_group(&mut self, expr_group: &ast::ExprGroup) -> ir::ExprGroup<MonoTy> {
-        let expr = self.lower_expr(&expr_group.expr);
-
-        ir::ExprGroup {
-            expr: Box::new(expr),
-        }
+    fn lower_expr_group(&mut self, expr_group: &ast::ExprGroup) -> ir::Expr<MonoTy> {
+        self.lower_expr(&expr_group.expr)
     }
 
     fn lower_expr_if(&mut self, expr_if: &ast::ExprIf) -> ir::ExprIf<MonoTy> {

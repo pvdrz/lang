@@ -1,16 +1,17 @@
 mod expr;
 
 pub(crate) use crate::ast::{BinOp, Literal, UnOp};
+use crate::def_gen;
 pub(crate) use crate::ir::expr::*;
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub(crate) struct DefId(usize);
 
 impl DefId {
-    pub(crate) fn new(id: usize) -> Self {
-        Self(id)
-    }
+    pub(crate) const RIDICULOUS: Self = Self(usize::MAX);
 }
+
+def_gen!(DefIdGen => DefId);
 
 #[derive(Debug)]
 pub(crate) struct LetBinding<T> {

@@ -6,6 +6,8 @@ mod scanner;
 mod token;
 mod ty;
 mod tycheck;
+#[macro_use]
+mod utils;
 
 use std::{cell::RefCell, fmt::Display, io, path::Path};
 

@@ -3,7 +3,7 @@ use std::collections::{HashMap, hash_map::Entry};
 use crate::{
     Lang,
     ast::{self, Ident},
-    ir::{self, DefId},
+    ir::{self, DefId, DefIdGen},
     ty::mono::{MonoTy, MonoVarGen},
 };
 
@@ -11,7 +11,7 @@ pub(crate) struct Resolver<'ctx> {
     lang: &'ctx Lang,
     scope: Scope,
     scopes: Vec<Scope>,
-    count: usize,
+    def_id_gen: DefIdGen,
     mono_var_gen: &'ctx mut MonoVarGen,
 }
 
@@ -26,14 +26,13 @@ impl<'ctx> Resolver<'ctx> {
             lang,
             scope: Scope::default(),
             scopes: Vec::new(),
-            count: 0,
+            def_id_gen: DefIdGen::new(),
             mono_var_gen,
         }
     }
 
     fn bind(&mut self, ident: &Ident) -> DefId {
-        let mut def_id = DefId::new(self.count);
-        self.count += 1;
+        let mut def_id = self.def_id_gen.generate();
 
         match self.scope.inner.entry(ident.clone()) {
             // This means we're shadowing the binding
@@ -59,7 +58,7 @@ impl<'ctx> Resolver<'ctx> {
             ident.line(),
             format!("Cannot resolve identifier `{ident}`."),
         );
-        DefId::new(usize::MAX)
+        DefId::RIDICULOUS
     }
 
     fn enter_scope(&mut self) {

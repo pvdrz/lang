@@ -18,13 +18,13 @@ use crate::{
     parser::Parser,
     scanner::Scanner,
     token::{Token, TokenKind},
-    ty::mono::{MonoTy, VarMonoTyGen},
+    ty::{Ty, VarTyGen},
     tycheck::TyChecker,
 };
 
 struct Lang {
     had_error: RefCell<bool>,
-    var_ty_gen: RefCell<VarMonoTyGen>,
+    var_ty_gen: RefCell<VarTyGen>,
     def_id_gen: RefCell<DefIdGen>,
 }
 
@@ -32,7 +32,7 @@ impl Lang {
     fn new() -> Self {
         Self {
             had_error: false.into(),
-            var_ty_gen: VarMonoTyGen::new().into(),
+            var_ty_gen: VarTyGen::new().into(),
             def_id_gen: DefIdGen::new().into(),
         }
     }
@@ -46,9 +46,9 @@ impl Lang {
         eprintln!("[line.{line}] error{where_}: {msg}");
     }
 
-    fn gen_var_ty(&self) -> MonoTy {
+    fn gen_var_ty(&self) -> Ty {
         let var = self.var_ty_gen.borrow_mut().generate();
-        MonoTy::Var(var)
+        Ty::Var(var)
     }
 
     fn gen_def_id(&self) -> DefId {

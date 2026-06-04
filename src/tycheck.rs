@@ -5,14 +5,14 @@ use crate::{
     ir::{
         DefId, Expr, ExprApp, ExprBinary, ExprCase, ExprIf, ExprLet, ExprUnary, Literal, Pat, UnOp,
     },
-    ty::mono::{FnMonoTy, MonoTy, VarMonoTy},
+    ty::{FnTy, Ty, VarTy},
 };
 
 pub(crate) struct TyChecker<'ctx> {
     lang: &'ctx Lang,
-    assumptions: HashMap<DefId, MonoTy>,
-    constraints: Vec<(MonoTy, MonoTy)>,
-    substitutions: HashMap<VarMonoTy, MonoTy>,
+    assumptions: HashMap<DefId, Ty>,
+    constraints: Vec<(Ty, Ty)>,
+    substitutions: HashMap<VarTy, Ty>,
 }
 
 impl<'ctx> TyChecker<'ctx> {
@@ -25,7 +25,7 @@ impl<'ctx> TyChecker<'ctx> {
         }
     }
 
-    pub(crate) fn infer_type(&mut self, expr: &mut Expr<MonoTy>) -> MonoTy {
+    pub(crate) fn infer_type(&mut self, expr: &mut Expr<Ty>) -> Ty {
         let mut ty = self.type_expr(expr);
         self.unify();
         self.substitute_expr(expr);
@@ -33,7 +33,7 @@ impl<'ctx> TyChecker<'ctx> {
         ty
     }
 
-    fn type_expr(&mut self, expr: &Expr<MonoTy>) -> MonoTy {
+    fn type_expr(&mut self, expr: &Expr<Ty>) -> Ty {
         match expr {
             Expr::Lit(literal) => self.type_literal(literal),
             Expr::Ident(def_id) => self.type_def_id(def_id),
@@ -46,34 +46,34 @@ impl<'ctx> TyChecker<'ctx> {
         }
     }
 
-    fn type_literal(&mut self, literal: &Literal) -> MonoTy {
+    fn type_literal(&mut self, literal: &Literal) -> Ty {
         match literal {
-            Literal::Int(_) => MonoTy::Int,
-            Literal::Float(_) => MonoTy::Float,
-            Literal::Str(_) => MonoTy::String,
-            Literal::True | Literal::False => MonoTy::Bool,
+            Literal::Int(_) => Ty::Int,
+            Literal::Float(_) => Ty::Float,
+            Literal::Str(_) => Ty::String,
+            Literal::True | Literal::False => Ty::Bool,
         }
     }
 
-    fn type_def_id(&mut self, def_id: &DefId) -> MonoTy {
+    fn type_def_id(&mut self, def_id: &DefId) -> Ty {
         self.assumptions[def_id].clone()
     }
 
-    fn type_expr_unary(&mut self, expr_unary: &ExprUnary<MonoTy>) -> MonoTy {
+    fn type_expr_unary(&mut self, expr_unary: &ExprUnary<Ty>) -> Ty {
         let expr_ty = self.type_expr(&expr_unary.expr);
         match expr_unary.op {
             UnOp::Neg => {
-                self.constraints.push((MonoTy::Int, expr_ty));
-                MonoTy::Int
+                self.constraints.push((Ty::Int, expr_ty));
+                Ty::Int
             }
             UnOp::Not => {
-                self.constraints.push((MonoTy::Bool, expr_ty));
-                MonoTy::Bool
+                self.constraints.push((Ty::Bool, expr_ty));
+                Ty::Bool
             }
         }
     }
 
-    fn type_expr_binary(&mut self, expr_binary: &ExprBinary<MonoTy>) -> MonoTy {
+    fn type_expr_binary(&mut self, expr_binary: &ExprBinary<Ty>) -> Ty {
         let lhs_ty = self.type_expr(&expr_binary.lhs);
         let rhs_ty = self.type_expr(&expr_binary.rhs);
         self.constraints.push((lhs_ty.clone(), rhs_ty));
@@ -87,20 +87,20 @@ impl<'ctx> TyChecker<'ctx> {
             | crate::ir::BinOp::Sub
             | crate::ir::BinOp::Mul
             | crate::ir::BinOp::Div => {
-                self.constraints.push((MonoTy::Int, lhs_ty.clone()));
-                MonoTy::Int
+                self.constraints.push((Ty::Int, lhs_ty.clone()));
+                Ty::Int
             }
             crate::ir::BinOp::And | crate::ir::BinOp::Or => {
-                self.constraints.push((MonoTy::Bool, lhs_ty.clone()));
-                MonoTy::Bool
+                self.constraints.push((Ty::Bool, lhs_ty.clone()));
+                Ty::Bool
             }
             _ => lhs_ty,
         }
     }
 
-    fn type_expr_if(&mut self, expr_if: &ExprIf<MonoTy>) -> MonoTy {
+    fn type_expr_if(&mut self, expr_if: &ExprIf<Ty>) -> Ty {
         let cond_ty = self.type_expr(&expr_if.cond);
-        self.constraints.push((MonoTy::Bool, cond_ty));
+        self.constraints.push((Ty::Bool, cond_ty));
 
         let do_ty = self.type_expr(&expr_if.do_branch);
         match expr_if.else_branch.as_deref() {
@@ -110,13 +110,13 @@ impl<'ctx> TyChecker<'ctx> {
                 do_ty
             }
             None => {
-                self.constraints.push((MonoTy::Unit, do_ty));
-                MonoTy::Unit
+                self.constraints.push((Ty::Unit, do_ty));
+                Ty::Unit
             }
         }
     }
 
-    fn type_expr_case(&mut self, expr_case: &ExprCase<MonoTy>) -> MonoTy {
+    fn type_expr_case(&mut self, expr_case: &ExprCase<Ty>) -> Ty {
         let expr_ty = self.type_expr(&expr_case.expr);
 
         let mut branch_tys = Vec::new();
@@ -141,16 +141,16 @@ impl<'ctx> TyChecker<'ctx> {
 
             ty
         } else {
-            MonoTy::Never
+            Ty::Never
         }
     }
 
-    fn type_expr_let(&mut self, expr_let: &ExprLet<MonoTy>) -> MonoTy {
+    fn type_expr_let(&mut self, expr_let: &ExprLet<Ty>) -> Ty {
         let mut lhs_ty = expr_let.ret_ty.clone();
 
         for (arg, arg_ty) in expr_let.args.iter().rev() {
             self.assumptions.insert(*arg, arg_ty.clone());
-            lhs_ty = MonoTy::Fn(FnMonoTy {
+            lhs_ty = Ty::Fn(FnTy {
                 arg: Box::new(arg_ty.clone()),
                 ret: Box::new(lhs_ty),
             });
@@ -170,14 +170,14 @@ impl<'ctx> TyChecker<'ctx> {
         body_ty
     }
 
-    fn type_expr_app(&mut self, expr_app: &ExprApp<MonoTy>) -> MonoTy {
+    fn type_expr_app(&mut self, expr_app: &ExprApp<Ty>) -> Ty {
         let func_ty = self.type_expr(&expr_app.func);
         let arg_ty = self.type_expr(&expr_app.arg);
         let ret_ty = self.lang.gen_var_ty();
 
         self.constraints.push((
             func_ty,
-            MonoTy::Fn(FnMonoTy {
+            Ty::Fn(FnTy {
                 arg: Box::new(arg_ty),
                 ret: Box::new(ret_ty.clone()),
             }),
@@ -190,15 +190,15 @@ impl<'ctx> TyChecker<'ctx> {
         while let Some((ty1, ty2)) = self.constraints.pop() {
             if ty1 == ty2 {
                 continue;
-            } else if let MonoTy::Var(x) = ty1 {
+            } else if let Ty::Var(x) = ty1 {
                 self.replace(x, &ty2);
                 self.substitutions.insert(x, ty2);
-            } else if let MonoTy::Var(x) = ty2 {
+            } else if let Ty::Var(x) = ty2 {
                 self.replace(x, &ty1);
                 self.substitutions.insert(x, ty1);
             } else {
                 match (ty1, ty2) {
-                    (MonoTy::Fn(ty1), MonoTy::Fn(ty2)) => {
+                    (Ty::Fn(ty1), Ty::Fn(ty2)) => {
                         self.constraints.push((*ty1.arg, *ty2.arg));
                         self.constraints.push((*ty1.ret, *ty2.ret));
                     }
@@ -212,14 +212,14 @@ impl<'ctx> TyChecker<'ctx> {
         }
     }
 
-    fn replace(&mut self, var: VarMonoTy, ty: &MonoTy) {
+    fn replace(&mut self, var: VarTy, ty: &Ty) {
         for (lhs, rhs) in &mut self.constraints {
             replace(lhs, var, ty);
             replace(rhs, var, ty);
         }
     }
 
-    fn substitute_expr(&self, expr: &mut Expr<MonoTy>) {
+    fn substitute_expr(&self, expr: &mut Expr<Ty>) {
         match expr {
             Expr::Lit(_) | Expr::Ident(_) => (),
             Expr::Unary(expr_unary) => self.substitute_expr_unary(expr_unary),
@@ -231,16 +231,16 @@ impl<'ctx> TyChecker<'ctx> {
         }
     }
 
-    fn substitute_expr_unary(&self, expr_unary: &mut ExprUnary<MonoTy>) {
+    fn substitute_expr_unary(&self, expr_unary: &mut ExprUnary<Ty>) {
         self.substitute_expr(&mut expr_unary.expr);
     }
 
-    fn substitute_expr_binary(&self, expr_binary: &mut ExprBinary<MonoTy>) {
+    fn substitute_expr_binary(&self, expr_binary: &mut ExprBinary<Ty>) {
         self.substitute_expr(&mut expr_binary.lhs);
         self.substitute_expr(&mut expr_binary.rhs);
     }
 
-    fn substitute_expr_if(&self, expr_if: &mut ExprIf<MonoTy>) {
+    fn substitute_expr_if(&self, expr_if: &mut ExprIf<Ty>) {
         self.substitute_expr(&mut expr_if.cond);
         self.substitute_expr(&mut expr_if.do_branch);
         if let Some(else_branch) = expr_if.else_branch.as_deref_mut() {
@@ -248,7 +248,7 @@ impl<'ctx> TyChecker<'ctx> {
         }
     }
 
-    fn substitute_expr_case(&self, expr_case: &mut ExprCase<MonoTy>) {
+    fn substitute_expr_case(&self, expr_case: &mut ExprCase<Ty>) {
         self.substitute_expr(&mut expr_case.expr);
 
         for (_, expr) in &mut expr_case.arms {
@@ -256,26 +256,21 @@ impl<'ctx> TyChecker<'ctx> {
         }
     }
 
-    fn substitute_expr_let(&self, expr_let: &mut ExprLet<MonoTy>) {
+    fn substitute_expr_let(&self, expr_let: &mut ExprLet<Ty>) {
         self.substitute_ty(&mut expr_let.ret_ty);
         self.substitute_expr(&mut expr_let.rhs);
         self.substitute_expr(&mut expr_let.body);
     }
 
-    fn substitute_expr_app(&self, expr_app: &mut ExprApp<MonoTy>) {
+    fn substitute_expr_app(&self, expr_app: &mut ExprApp<Ty>) {
         self.substitute_expr(&mut expr_app.func);
         self.substitute_expr(&mut expr_app.arg);
     }
 
-    fn substitute_ty(&self, ty: &mut MonoTy) {
+    fn substitute_ty(&self, ty: &mut Ty) {
         match ty {
-            MonoTy::Int
-            | MonoTy::Float
-            | MonoTy::String
-            | MonoTy::Bool
-            | MonoTy::Unit
-            | MonoTy::Never => (),
-            MonoTy::Var(var) => match self.substitutions.get(var) {
+            Ty::Int | Ty::Float | Ty::String | Ty::Bool | Ty::Unit | Ty::Never => (),
+            Ty::Var(var) => match self.substitutions.get(var) {
                 Some(subs) => {
                     *ty = subs.clone();
                     self.substitute_ty(ty);
@@ -285,7 +280,7 @@ impl<'ctx> TyChecker<'ctx> {
                     self.lang.error(0, format!("Cannot resolve type {var}"));
                 }
             },
-            MonoTy::Fn(fn_ty) => {
+            Ty::Fn(fn_ty) => {
                 self.substitute_ty(&mut fn_ty.ret);
                 self.substitute_ty(&mut fn_ty.arg);
             }
@@ -293,14 +288,14 @@ impl<'ctx> TyChecker<'ctx> {
     }
 }
 
-fn replace(target: &mut MonoTy, var: VarMonoTy, ty: &MonoTy) {
+fn replace(target: &mut Ty, var: VarTy, ty: &Ty) {
     match target {
-        MonoTy::Var(x) => {
+        Ty::Var(x) => {
             if *x == var {
                 *target = ty.clone();
             }
         }
-        MonoTy::Fn(fn_ty) => {
+        Ty::Fn(fn_ty) => {
             replace(&mut fn_ty.arg, var, ty);
             replace(&mut fn_ty.ret, var, ty);
         }

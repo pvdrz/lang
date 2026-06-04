@@ -64,7 +64,10 @@ impl<'ctx> TyChecker<'ctx> {
     fn type_expr_unary(&mut self, expr_unary: &ExprUnary<MonoTy>) -> MonoTy {
         let expr_ty = self.type_expr(&expr_unary.expr);
         match expr_unary.op {
-            UnOp::Neg => expr_ty,
+            UnOp::Neg => {
+                self.constraints.push((MonoTy::Int, expr_ty));
+                MonoTy::Int
+            }
             UnOp::Not => {
                 self.constraints.push((MonoTy::Bool, expr_ty));
                 MonoTy::Bool
@@ -76,7 +79,25 @@ impl<'ctx> TyChecker<'ctx> {
         let lhs_ty = self.type_expr(&expr_binary.lhs);
         let rhs_ty = self.type_expr(&expr_binary.rhs);
         self.constraints.push((lhs_ty.clone(), rhs_ty));
-        lhs_ty
+
+        match expr_binary.op {
+            crate::ir::BinOp::Lt
+            | crate::ir::BinOp::Le
+            | crate::ir::BinOp::Gt
+            | crate::ir::BinOp::Ge
+            | crate::ir::BinOp::Add
+            | crate::ir::BinOp::Sub
+            | crate::ir::BinOp::Mul
+            | crate::ir::BinOp::Div => {
+                self.constraints.push((MonoTy::Int, lhs_ty.clone()));
+                MonoTy::Int
+            }
+            crate::ir::BinOp::And | crate::ir::BinOp::Or => {
+                self.constraints.push((MonoTy::Bool, lhs_ty.clone()));
+                MonoTy::Bool
+            }
+            _ => lhs_ty,
+        }
     }
 
     fn type_expr_if(&mut self, expr_if: &ExprIf<MonoTy>) -> MonoTy {

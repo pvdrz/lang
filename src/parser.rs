@@ -3,8 +3,8 @@ use std::fmt::Display;
 use crate::{
     Lang,
     ast::{
-        BinOp, Expr, ExprApp, ExprBinary, ExprIf, ExprLet, ExprUnary, File, Ident, LetBinding,
-        Literal, Pat, UnOp,
+        BinOp, Expr, ExprApp, ExprBinary, ExprIf, ExprLet, ExprUnary, Ident, LetBinding, Literal,
+        Pat, UnOp,
     },
     token::{Token, TokenKind},
 };
@@ -24,13 +24,8 @@ impl<'ctx> Parser<'ctx> {
         }
     }
 
-    pub(crate) fn parse(&mut self) -> Result<File, ParseError> {
-        let mut bindings = Vec::new();
-        while self.matches(&TokenKind::Let) {
-            bindings.push(self.let_binding()?);
-        }
-
-        Ok(File { bindings })
+    pub(crate) fn parse(&mut self) -> Result<Expr, ParseError> {
+        self.expression()
     }
 
     fn expression(&mut self) -> Result<Expr, ParseError> {

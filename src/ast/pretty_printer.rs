@@ -1,10 +1,10 @@
 use std::fmt::Write;
 
-use crate::ast::{BinOp, File, Literal, UnOp, visitor::Visitor};
+use crate::ast::{BinOp, Expr, Literal, UnOp, visitor::Visitor};
 
-pub(crate) fn pretty_print(file: &File) -> String {
+pub(crate) fn pretty_print(expr: &Expr) -> String {
     let mut pp = PrettyPrinter { buf: String::new() };
-    pp.visit_file(file);
+    pp.visit_expr(expr);
     pp.buf
 }
 

@@ -62,7 +62,7 @@ impl Lang {
 
         let mut mono_var_gen = MonoVarGen::new();
         let mut resolver = Resolver::new(self, &mut mono_var_gen);
-        let _file = resolver.lower_file(&file);
+        let _file = resolver.lower_expr(&file);
         if *self.had_error.borrow() {
             return;
         }

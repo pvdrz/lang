@@ -22,11 +22,6 @@ pub(crate) struct LetBinding<T> {
 }
 
 #[derive(Debug)]
-pub(crate) struct File<T> {
-    pub(crate) bindings: Vec<LetBinding<T>>,
-}
-
-#[derive(Debug)]
 pub(crate) enum Pat {
     Lit(Literal),
     Ident(DefId),

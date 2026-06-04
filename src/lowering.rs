@@ -105,20 +105,7 @@ impl<'ctx> Resolver<'ctx> {
         }
     }
 
-    pub(crate) fn lower_file(&mut self, file: &ast::File) -> ir::File<MonoTy> {
-        self.enter_scope();
-
-        let bindings = file
-            .bindings
-            .iter()
-            .map(|b| self.lower_let_binding(b))
-            .collect();
-
-        self.exit_scope();
-        ir::File { bindings }
-    }
-
-    fn lower_expr(&mut self, expr: &ast::Expr) -> ir::Expr<MonoTy> {
+    pub(crate) fn lower_expr(&mut self, expr: &ast::Expr) -> ir::Expr<MonoTy> {
         match expr {
             ast::Expr::Lit(literal) => ir::Expr::Lit(self.lower_literal(literal)),
             ast::Expr::Ident(ident) => ir::Expr::Ident(self.lower_ident(ident)),

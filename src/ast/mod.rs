@@ -61,11 +61,6 @@ pub(crate) struct LetBinding {
 }
 
 #[derive(Debug)]
-pub(crate) struct File {
-    pub(crate) bindings: Vec<LetBinding>,
-}
-
-#[derive(Debug)]
 pub(crate) enum Pat {
     Lit(Literal),
     Ident(Ident),

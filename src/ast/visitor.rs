@@ -1,6 +1,6 @@
 use crate::ast::{
-    Expr, ExprApp, ExprBinary, ExprCase, ExprGroup, ExprIf, ExprLet, ExprUnary, File, Ident,
-    LetBinding, Literal, Pat,
+    Expr, ExprApp, ExprBinary, ExprCase, ExprGroup, ExprIf, ExprLet, ExprUnary, Ident, LetBinding,
+    Literal, Pat,
     op::{BinOp, UnOp},
 };
 
@@ -15,10 +15,6 @@ pub(crate) trait Visitor {
 
     fn visit_let_binding(&mut self, binding: &LetBinding) {
         visit_let_binding(self, binding);
-    }
-
-    fn visit_file(&mut self, file: &File) {
-        visit_file(self, file);
     }
 
     fn visit_expr(&mut self, expr: &Expr) {
@@ -81,12 +77,6 @@ pub(crate) fn visit_let_binding<V: Visitor + ?Sized>(v: &mut V, binding: &LetBin
         v.visit_ident(ident);
     }
     v.visit_expr(&binding.rhs);
-}
-
-pub(crate) fn visit_file<V: Visitor + ?Sized>(v: &mut V, file: &File) {
-    for binding in &file.bindings {
-        v.visit_let_binding(binding);
-    }
 }
 
 pub(crate) fn visit_expr<V: Visitor + ?Sized>(v: &mut V, expr: &Expr) {

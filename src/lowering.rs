@@ -51,7 +51,7 @@ impl<'ctx> Resolver<'ctx> {
         // We send the error but return an almost impossible to obtain ID so we can keep lowering
         // the AST and probably find more errors
         self.lang.error(
-            ident.line(),
+            ident.span(),
             format!("Cannot resolve identifier `{ident}`."),
         );
         DefId::RIDICULOUS

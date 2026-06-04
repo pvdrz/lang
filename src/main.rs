@@ -8,8 +8,9 @@ mod ty;
 mod tycheck;
 #[macro_use]
 mod utils;
+mod source_map;
 
-use std::{cell::RefCell, fmt::Display, io, path::Path};
+use std::{cell::RefCell, fmt::Display, io, ops::DerefMut, path::Path};
 
 use crate::{
     ast::pretty_printer::pretty_print,
@@ -17,13 +18,14 @@ use crate::{
     lowering::Resolver,
     parser::Parser,
     scanner::Scanner,
-    token::{Token, TokenKind},
+    source_map::{SourceMap, Span},
     ty::{Ty, VarTyGen},
     tycheck::TyChecker,
 };
 
 struct Lang {
     had_error: RefCell<bool>,
+    source_map: RefCell<SourceMap>,
     var_ty_gen: RefCell<VarTyGen>,
     def_id_gen: RefCell<DefIdGen>,
 }
@@ -32,18 +34,16 @@ impl Lang {
     fn new() -> Self {
         Self {
             had_error: false.into(),
+            source_map: SourceMap::new().into(),
             var_ty_gen: VarTyGen::new().into(),
             def_id_gen: DefIdGen::new().into(),
         }
     }
 
-    fn error(&self, line: usize, msg: impl Display) {
+    fn error(&self, span: Span, msg: impl Display) {
         *self.had_error.borrow_mut() = true;
-        self.report(line, "", msg)
-    }
-
-    fn report(&self, line: usize, where_: impl Display, msg: impl Display) {
-        eprintln!("[line.{line}] error{where_}: {msg}");
+        let (line, col) = self.source_map().map_offset(span.start());
+        eprintln!("Error at {}:{}: {msg}", line + 1, col + 1);
     }
 
     fn gen_var_ty(&self) -> Ty {
@@ -89,12 +89,8 @@ impl Lang {
         println!("Program has type: {file_ty}");
     }
 
-    fn parse_error(&self, token: &Token, msg: impl Display) {
-        if token.kind == TokenKind::EOF {
-            self.report(token.line, " at end", msg)
-        } else {
-            self.report(token.line, "", msg)
-        }
+    fn source_map(&self) -> impl DerefMut<Target = SourceMap> {
+        self.source_map.borrow_mut()
     }
 }
 

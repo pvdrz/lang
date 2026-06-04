@@ -8,19 +8,21 @@ use std::{fmt, hash::Hash};
 pub(crate) use expr::*;
 pub(crate) use op::*;
 
+use crate::source_map::Span;
+
 #[derive(Debug, Clone)]
 pub(crate) struct Ident {
     inner: String,
-    line: usize,
+    span: Span,
 }
 
 impl Ident {
-    pub(crate) fn new(inner: String, line: usize) -> Self {
-        Self { inner, line }
+    pub(crate) fn new(inner: String, span: Span) -> Self {
+        Self { inner, span }
     }
 
-    pub(crate) fn line(&self) -> usize {
-        self.line
+    pub(crate) fn span(&self) -> Span {
+        self.span
     }
 }
 

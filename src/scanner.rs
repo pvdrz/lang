@@ -1,5 +1,6 @@
 use crate::{
     Lang,
+    source_map::Span,
     token::{Token, TokenKind},
 };
 
@@ -10,7 +11,6 @@ pub struct Scanner<'ctx> {
     start: usize,
     // The character that is currently being considered.
     current: usize,
-    line: usize,
     lang: &'ctx Lang,
 }
 
@@ -21,7 +21,6 @@ impl<'ctx> Scanner<'ctx> {
             tokens: vec![],
             start: 0,
             current: 0,
-            line: 1,
             lang,
         }
     }
@@ -34,7 +33,7 @@ impl<'ctx> Scanner<'ctx> {
 
         self.tokens.push(Token {
             kind: TokenKind::EOF,
-            line: self.line,
+            span: self.span(),
         });
         self.tokens
     }
@@ -106,14 +105,14 @@ impl<'ctx> Scanner<'ctx> {
                 if self.matches('&') {
                     self.add_token(TokenKind::AndAnd)
                 } else {
-                    self.lang.error(self.line, format!("Expected `&`"))
+                    self.lang.error(self.span(), format!("Expected `&`"))
                 }
             }
             '|' => {
                 if self.matches('|') {
                     self.add_token(TokenKind::OrOr)
                 } else {
-                    self.lang.error(self.line, format!("Expected `|`"))
+                    self.lang.error(self.span(), format!("Expected `|`"))
                 }
             }
 
@@ -121,13 +120,15 @@ impl<'ctx> Scanner<'ctx> {
             c if c.is_digit(10) => self.number(),
             ' ' | '\r' | '\t' => {}
             c if c.is_alphabetic() || c == '_' => self.identifier(),
-            '\n' => {
-                self.line += 1;
-            }
+            '\n' => self.newline(),
             c => self
                 .lang
-                .error(self.line, format!("Unexpected character `{c}`.")),
+                .error(self.span(), format!("Unexpected character `{c}`.")),
         }
+    }
+
+    fn newline(&self) {
+        self.lang.source_map().newline(self.current);
     }
 
     fn advance(&mut self) -> char {
@@ -139,7 +140,7 @@ impl<'ctx> Scanner<'ctx> {
     fn add_token(&mut self, kind: TokenKind) {
         self.tokens.push(Token {
             kind,
-            line: self.line,
+            span: self.span(),
         })
     }
 
@@ -167,14 +168,12 @@ impl<'ctx> Scanner<'ctx> {
 
     fn string(&mut self) {
         while self.peek() != '"' && !self.is_at_end() {
-            if self.peek() == '\n' {
-                self.line += 1;
-            }
+            if self.peek() == '\n' {}
             self.advance();
         }
 
         if self.is_at_end() {
-            self.lang.error(self.line, "Unterminated string.");
+            self.lang.error(self.span(), "Unterminated string.");
             return;
         }
         // This is a `"` because we are not at the end of the source and the while loop above
@@ -243,5 +242,9 @@ impl<'ctx> Scanner<'ctx> {
             _ => TokenKind::Ident(ident),
         };
         self.add_token(kind);
+    }
+
+    fn span(&self) -> Span {
+        Span::new(self.start, self.current)
     }
 }

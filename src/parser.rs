@@ -429,7 +429,7 @@ impl<'ctx> Parser<'ctx> {
     }
 
     fn err<T>(&self, token: &Token, msg: impl Display) -> Result<T, ParseError> {
-        self.lang.parse_error(token, msg);
+        self.lang.error(token.span, msg);
         Err(ParseError {})
     }
 
@@ -457,7 +457,7 @@ pub(crate) struct ParseError {}
 
 fn match_ident(tk: &Token) -> Option<Ident> {
     match &tk.kind {
-        TokenKind::Ident(ident) => Some(Ident::new(ident.clone(), tk.line)),
+        TokenKind::Ident(ident) => Some(Ident::new(ident.clone(), tk.span)),
         _ => None,
     }
 }

@@ -5,6 +5,7 @@ use crate::{
     ir::{
         DefId, Expr, ExprApp, ExprBinary, ExprCase, ExprIf, ExprLet, ExprUnary, Literal, Pat, UnOp,
     },
+    source_map::Span,
     ty::{FnTy, Ty, VarTy},
 };
 
@@ -205,7 +206,7 @@ impl<'ctx> TyChecker<'ctx> {
                     (ty1, ty2) => {
                         // FIXME: we need line information here.
                         self.lang
-                            .error(0, format!("Cannot unify {ty1} with {ty2}."));
+                            .error(Span::DUMMY, format!("Cannot unify {ty1} with {ty2}."));
                     }
                 }
             }
@@ -277,7 +278,8 @@ impl<'ctx> TyChecker<'ctx> {
                 }
                 None => {
                     // FIXME: we need line information here
-                    self.lang.error(0, format!("Cannot resolve type {var}"));
+                    self.lang
+                        .error(Span::DUMMY, format!("Cannot resolve type {var}"));
                 }
             },
             Ty::Fn(fn_ty) => {

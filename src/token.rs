@@ -1,3 +1,5 @@
+use crate::source_map::Span;
+
 #[derive(Debug, PartialEq)]
 pub(crate) enum TokenKind {
     LeftParen,
@@ -39,5 +41,5 @@ pub(crate) enum TokenKind {
 #[derive(Debug)]
 pub(crate) struct Token {
     pub(crate) kind: TokenKind,
-    pub(crate) line: usize,
+    pub(crate) span: Span,
 }

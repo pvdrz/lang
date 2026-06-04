@@ -141,6 +141,8 @@ impl<'ctx> Parser<'ctx> {
             self.consume(&TokenKind::Equal, "Expected `=` in let binding.")?;
             let rhs = self.expression()?;
 
+            self.consume(&TokenKind::Semicolon, "Expected `;` in let binding.")?;
+
             Ok(LetBinding {
                 lhs,
                 args,

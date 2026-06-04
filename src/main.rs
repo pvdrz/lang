@@ -13,22 +13,27 @@ use std::{cell::RefCell, fmt::Display, io, path::Path};
 
 use crate::{
     ast::pretty_printer::pretty_print,
+    ir::{DefId, DefIdGen},
     lowering::Resolver,
     parser::Parser,
     scanner::Scanner,
     token::{Token, TokenKind},
-    ty::mono::VarMonoTyGen,
+    ty::mono::{MonoTy, VarMonoTyGen},
     tycheck::TyChecker,
 };
 
 struct Lang {
     had_error: RefCell<bool>,
+    var_ty_gen: RefCell<VarMonoTyGen>,
+    def_id_gen: RefCell<DefIdGen>,
 }
 
 impl Lang {
     fn new() -> Self {
         Self {
             had_error: false.into(),
+            var_ty_gen: VarMonoTyGen::new().into(),
+            def_id_gen: DefIdGen::new().into(),
         }
     }
 
@@ -39,6 +44,15 @@ impl Lang {
 
     fn report(&self, line: usize, where_: impl Display, msg: impl Display) {
         eprintln!("[line.{line}] error{where_}: {msg}");
+    }
+
+    fn gen_var_ty(&self) -> MonoTy {
+        let var = self.var_ty_gen.borrow_mut().generate();
+        MonoTy::Var(var)
+    }
+
+    fn gen_def_id(&self) -> DefId {
+        self.def_id_gen.borrow_mut().generate()
     }
 
     fn run_file<P: AsRef<Path>>(&self, path: &P) -> io::Result<()> {
@@ -61,13 +75,12 @@ impl Lang {
         };
         println!("{}", pretty_print(&file));
 
-        let mut var_ty_gen = VarMonoTyGen::new();
-        let mut resolver = Resolver::new(self, &mut var_ty_gen);
+        let mut resolver = Resolver::new(self);
         let mut file = resolver.lower_expr(&file);
         if *self.had_error.borrow() {
             return;
         }
-        let mut checker = TyChecker::new(self, &mut var_ty_gen);
+        let mut checker = TyChecker::new(self);
         let file_ty = checker.infer_type(&mut file);
         if *self.had_error.borrow() {
             return;

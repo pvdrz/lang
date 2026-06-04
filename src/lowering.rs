@@ -3,16 +3,14 @@ use std::collections::{HashMap, hash_map::Entry};
 use crate::{
     Lang,
     ast::{self, Ident},
-    ir::{self, DefId, DefIdGen},
-    ty::mono::{MonoTy, VarMonoTyGen},
+    ir::{self, DefId},
+    ty::mono::MonoTy,
 };
 
 pub(crate) struct Resolver<'ctx> {
     lang: &'ctx Lang,
     scope: Scope,
     scopes: Vec<Scope>,
-    def_id_gen: DefIdGen,
-    var_ty_gen: &'ctx mut VarMonoTyGen,
 }
 
 #[derive(Default)]
@@ -21,18 +19,16 @@ struct Scope {
 }
 
 impl<'ctx> Resolver<'ctx> {
-    pub(crate) fn new(lang: &'ctx Lang, var_ty_gen: &'ctx mut VarMonoTyGen) -> Self {
+    pub(crate) fn new(lang: &'ctx Lang) -> Self {
         Self {
             lang,
             scope: Scope::default(),
             scopes: Vec::new(),
-            def_id_gen: DefIdGen::new(),
-            var_ty_gen,
         }
     }
 
     fn bind(&mut self, ident: &Ident) -> DefId {
-        let mut def_id = self.def_id_gen.generate();
+        let mut def_id = self.lang.gen_def_id();
 
         match self.scope.inner.entry(ident.clone()) {
             // This means we're shadowing the binding
@@ -179,11 +175,11 @@ impl<'ctx> Resolver<'ctx> {
         self.enter_scope();
 
         let lhs = self.bind(&expr_let.lhs);
-        let ret_ty = MonoTy::Var(self.var_ty_gen.generate());
+        let ret_ty = self.lang.gen_var_ty();
         let args = expr_let
             .args
             .iter()
-            .map(|arg| (self.bind(arg), MonoTy::Var(self.var_ty_gen.generate())))
+            .map(|arg| (self.bind(arg), self.lang.gen_var_ty()))
             .collect();
         let rhs = self.lower_expr(&expr_let.rhs);
         let body = self.lower_expr(&expr_let.body);

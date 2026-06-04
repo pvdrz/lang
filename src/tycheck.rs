@@ -5,7 +5,7 @@ use crate::{
     ir::{
         DefId, Expr, ExprApp, ExprBinary, ExprCase, ExprIf, ExprLet, ExprUnary, Literal, Pat, UnOp,
     },
-    ty::mono::{FnMonoTy, MonoTy, VarMonoTy, VarMonoTyGen},
+    ty::mono::{FnMonoTy, MonoTy, VarMonoTy},
 };
 
 pub(crate) struct TyChecker<'ctx> {
@@ -13,17 +13,15 @@ pub(crate) struct TyChecker<'ctx> {
     assumptions: HashMap<DefId, MonoTy>,
     constraints: Vec<(MonoTy, MonoTy)>,
     substitutions: HashMap<VarMonoTy, MonoTy>,
-    var_ty_gen: &'ctx mut VarMonoTyGen,
 }
 
 impl<'ctx> TyChecker<'ctx> {
-    pub(crate) fn new(lang: &'ctx Lang, var_ty_gen: &'ctx mut VarMonoTyGen) -> Self {
+    pub(crate) fn new(lang: &'ctx Lang) -> Self {
         Self {
             lang,
             assumptions: HashMap::new(),
             constraints: Vec::new(),
             substitutions: HashMap::new(),
-            var_ty_gen,
         }
     }
 
@@ -175,7 +173,7 @@ impl<'ctx> TyChecker<'ctx> {
     fn type_expr_app(&mut self, expr_app: &ExprApp<MonoTy>) -> MonoTy {
         let func_ty = self.type_expr(&expr_app.func);
         let arg_ty = self.type_expr(&expr_app.arg);
-        let ret_ty = MonoTy::Var(self.var_ty_gen.generate());
+        let ret_ty = self.lang.gen_var_ty();
 
         self.constraints.push((
             func_ty,

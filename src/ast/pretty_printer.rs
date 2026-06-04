@@ -70,7 +70,7 @@ impl Visitor for PrettyPrinter {
 
         let _ = self.buf.write_str(" = (");
         self.visit_expr(&binding.rhs);
-        let _ = self.buf.write_str(")\n");
+        let _ = self.buf.write_str(") ");
     }
 
     fn visit_expr_unary(&mut self, expr_unary: &super::ExprUnary) {

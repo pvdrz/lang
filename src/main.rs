@@ -69,6 +69,14 @@ impl Lang {
             return;
         }
 
+        let mut w = String::new();
+
+        for token in &tokens {
+            let _ = token.show(&mut w, &*self.source_map());
+            w += "\n";
+        }
+        println!("{w}");
+
         let mut parser = Parser::new(tokens, self);
         let Ok(file) = parser.parse() else {
             return;

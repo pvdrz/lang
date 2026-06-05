@@ -4,7 +4,6 @@ use crate::{
     Lang,
     ast::{self, Ident},
     ir::{self, DefId},
-    ty::Ty,
 };
 
 pub(crate) struct Resolver<'ctx> {
@@ -27,7 +26,7 @@ impl<'ctx> Resolver<'ctx> {
         }
     }
 
-    fn bind(&mut self, ident: &Ident) -> DefId {
+    fn bind(&mut self, ident: &ast::Ident) -> ir::Ident {
         let mut def_id = self.lang.gen_def_id();
 
         match self.scope.inner.entry(ident.clone()) {
@@ -38,7 +37,10 @@ impl<'ctx> Resolver<'ctx> {
             }
         }
 
-        def_id
+        ir::Ident {
+            def_id,
+            span: ident.span(),
+        }
     }
 
     fn resolve(&self, ident: &Ident) -> DefId {
@@ -72,8 +74,11 @@ impl<'ctx> Resolver<'ctx> {
 }
 
 impl<'ctx> Resolver<'ctx> {
-    fn lower_ident(&mut self, ident: &Ident) -> DefId {
-        self.resolve(ident)
+    fn lower_ident(&mut self, ident: &ast::Ident) -> ir::Ident {
+        ir::Ident {
+            def_id: self.resolve(ident),
+            span: ident.span(),
+        }
     }
 
     fn lower_pat(&mut self, pat: &ast::Pat) -> ir::Pat {
@@ -108,6 +113,7 @@ impl<'ctx> Resolver<'ctx> {
         ir::ExprUnary {
             op,
             expr: Box::new(expr),
+            span: expr_unary.span,
         }
     }
 
@@ -124,6 +130,7 @@ impl<'ctx> Resolver<'ctx> {
             lhs: Box::new(lhs),
             op,
             rhs: Box::new(rhs),
+            span: expr_binary.span,
         }
     }
 
@@ -147,6 +154,7 @@ impl<'ctx> Resolver<'ctx> {
             cond: Box::new(cond),
             do_branch: Box::new(do_branch),
             else_branch,
+            span: expr_if.span,
         }
     }
 
@@ -168,6 +176,7 @@ impl<'ctx> Resolver<'ctx> {
         ir::ExprCase {
             expr: Box::new(expr),
             arms,
+            span: expr_case.span,
         }
     }
 
@@ -192,6 +201,7 @@ impl<'ctx> Resolver<'ctx> {
             args,
             rhs: Box::new(rhs),
             body: Box::new(body),
+            span: expr_let.span,
         }
     }
 
@@ -202,6 +212,7 @@ impl<'ctx> Resolver<'ctx> {
         ir::ExprApp {
             func: Box::new(func),
             arg: Box::new(arg),
+            span: expr_app.span,
         }
     }
 }

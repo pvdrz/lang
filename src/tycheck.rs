@@ -1,9 +1,9 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 
 use crate::{
     Lang,
     ir::{
-        DefId, Expr, ExprApp, ExprBinary, ExprCase, ExprIf, ExprLet, ExprUnary, Literal,
+        DefId, Expr, ExprApp, ExprBinary, ExprCase, ExprIf, ExprLet, ExprUnary, Ident, Literal,
         LiteralKind, Pat, UnOp,
     },
     source_map::Span,
@@ -13,8 +13,14 @@ use crate::{
 pub(crate) struct TyChecker<'ctx> {
     lang: &'ctx Lang,
     assumptions: HashMap<DefId, Ty>,
-    constraints: Vec<(Ty, Ty)>,
+    constraints: VecDeque<Constraint>,
     substitutions: HashMap<VarTy, Ty>,
+}
+
+struct Constraint {
+    lhs: Ty,
+    rhs: Ty,
+    span: Span,
 }
 
 impl<'ctx> TyChecker<'ctx> {
@@ -22,7 +28,7 @@ impl<'ctx> TyChecker<'ctx> {
         Self {
             lang,
             assumptions: HashMap::new(),
-            constraints: Vec::new(),
+            constraints: VecDeque::new(),
             substitutions: HashMap::new(),
         }
     }
@@ -38,7 +44,7 @@ impl<'ctx> TyChecker<'ctx> {
     fn type_expr(&mut self, expr: &Expr) -> Ty {
         match expr {
             Expr::Lit(literal) => self.type_literal(literal),
-            Expr::Ident(def_id) => self.type_def_id(def_id),
+            Expr::Ident(ident) => self.type_ident(ident),
             Expr::Unary(expr_unary) => self.type_expr_unary(expr_unary),
             Expr::Binary(expr_binary) => self.type_expr_binary(expr_binary),
             Expr::If(expr_if) => self.type_expr_if(expr_if),
@@ -57,19 +63,19 @@ impl<'ctx> TyChecker<'ctx> {
         }
     }
 
-    fn type_def_id(&mut self, def_id: &DefId) -> Ty {
-        self.assumptions[def_id].clone()
+    fn type_ident(&mut self, ident: &Ident) -> Ty {
+        self.assumptions[&ident.def_id].clone()
     }
 
     fn type_expr_unary(&mut self, expr_unary: &ExprUnary) -> Ty {
         let expr_ty = self.type_expr(&expr_unary.expr);
         match expr_unary.op {
             UnOp::Neg => {
-                self.constraints.push((Ty::Int, expr_ty));
+                self.add_constraint(Ty::Int, expr_ty, expr_unary.expr.span());
                 Ty::Int
             }
             UnOp::Not => {
-                self.constraints.push((Ty::Bool, expr_ty));
+                self.add_constraint(Ty::Bool, expr_ty, expr_unary.expr.span());
                 Ty::Bool
             }
         }
@@ -78,7 +84,7 @@ impl<'ctx> TyChecker<'ctx> {
     fn type_expr_binary(&mut self, expr_binary: &ExprBinary) -> Ty {
         let lhs_ty = self.type_expr(&expr_binary.lhs);
         let rhs_ty = self.type_expr(&expr_binary.rhs);
-        self.constraints.push((lhs_ty.clone(), rhs_ty));
+        self.add_constraint(lhs_ty.clone(), rhs_ty, expr_binary.span);
 
         match expr_binary.op {
             crate::ir::BinOp::Lt
@@ -89,11 +95,11 @@ impl<'ctx> TyChecker<'ctx> {
             | crate::ir::BinOp::Sub
             | crate::ir::BinOp::Mul
             | crate::ir::BinOp::Div => {
-                self.constraints.push((Ty::Int, lhs_ty.clone()));
+                self.add_constraint(Ty::Int, lhs_ty.clone(), expr_binary.lhs.span());
                 Ty::Int
             }
             crate::ir::BinOp::And | crate::ir::BinOp::Or => {
-                self.constraints.push((Ty::Bool, lhs_ty.clone()));
+                self.add_constraint(Ty::Bool, lhs_ty.clone(), expr_binary.lhs.span());
                 Ty::Bool
             }
             _ => lhs_ty,
@@ -102,17 +108,17 @@ impl<'ctx> TyChecker<'ctx> {
 
     fn type_expr_if(&mut self, expr_if: &ExprIf) -> Ty {
         let cond_ty = self.type_expr(&expr_if.cond);
-        self.constraints.push((Ty::Bool, cond_ty));
+        self.add_constraint(Ty::Bool, cond_ty, expr_if.cond.span());
 
         let do_ty = self.type_expr(&expr_if.do_branch);
         match expr_if.else_branch.as_deref() {
             Some(else_branch) => {
                 let else_ty = self.type_expr(else_branch);
-                self.constraints.push((do_ty.clone(), else_ty));
+                self.add_constraint(do_ty.clone(), else_ty, else_branch.span());
                 do_ty
             }
             None => {
-                self.constraints.push((Ty::Unit, do_ty));
+                self.add_constraint(Ty::Unit, do_ty, expr_if.do_branch.span());
                 Ty::Unit
             }
         }
@@ -124,10 +130,10 @@ impl<'ctx> TyChecker<'ctx> {
         let mut branch_tys = Vec::new();
 
         for (pat, branch) in &expr_case.arms {
-            let branch_ty = if let Pat::Ident(def_id) = pat {
-                self.assumptions.insert(*def_id, expr_ty.clone());
+            let branch_ty = if let Pat::Ident(ident) = pat {
+                self.assumptions.insert(ident.def_id, expr_ty.clone());
                 let branch_ty = self.type_expr(branch);
-                self.assumptions.remove(def_id);
+                self.assumptions.remove(&ident.def_id);
                 branch_ty
             } else {
                 self.type_expr(branch)
@@ -137,8 +143,9 @@ impl<'ctx> TyChecker<'ctx> {
         }
 
         if let Some(ty) = branch_tys.pop() {
-            while let Some(branch_ty) = branch_tys.pop() {
-                self.constraints.push((ty.clone(), branch_ty));
+            let mut arms = expr_case.arms.iter().skip(1);
+            while let (Some(branch_ty), Some((_, branch))) = (branch_tys.pop(), arms.next()) {
+                self.add_constraint(ty.clone(), branch_ty, branch.span());
             }
 
             ty
@@ -151,7 +158,7 @@ impl<'ctx> TyChecker<'ctx> {
         let mut lhs_ty = expr_let.ret_ty.clone();
 
         for (arg, arg_ty) in expr_let.args.iter().rev() {
-            self.assumptions.insert(*arg, arg_ty.clone());
+            self.assumptions.insert(arg.def_id, arg_ty.clone());
             lhs_ty = Ty::Fn(FnTy {
                 arg: Box::new(arg_ty.clone()),
                 ret: Box::new(lhs_ty),
@@ -159,15 +166,15 @@ impl<'ctx> TyChecker<'ctx> {
         }
 
         let ret_ty = self.type_expr(&expr_let.rhs);
-        self.constraints.push((expr_let.ret_ty.clone(), ret_ty));
+        self.add_constraint(expr_let.ret_ty.clone(), ret_ty, expr_let.lhs.span);
 
         for (arg, _) in expr_let.args.iter() {
-            self.assumptions.remove(arg);
+            self.assumptions.remove(&arg.def_id);
         }
 
-        self.assumptions.insert(expr_let.lhs, lhs_ty);
+        self.assumptions.insert(expr_let.lhs.def_id, lhs_ty);
         let body_ty = self.type_expr(&expr_let.body);
-        self.assumptions.remove(&expr_let.lhs);
+        self.assumptions.remove(&expr_let.lhs.def_id);
 
         body_ty
     }
@@ -177,37 +184,59 @@ impl<'ctx> TyChecker<'ctx> {
         let arg_ty = self.type_expr(&expr_app.arg);
         let ret_ty = self.lang.gen_var_ty();
 
-        self.constraints.push((
+        self.add_constraint(
             func_ty,
             Ty::Fn(FnTy {
                 arg: Box::new(arg_ty),
                 ret: Box::new(ret_ty.clone()),
             }),
-        ));
+            expr_app.span,
+        );
 
         ret_ty
     }
 
+    fn add_constraint(&mut self, lhs: Ty, rhs: Ty, span: Span) {
+        let (line, col) = self.lang.source_map().map_offset(span.start());
+        println!(
+            "Adding constraint: {lhs} == {rhs} from {}:{}",
+            line + 1,
+            col + 1
+        );
+        self.constraints.push_back(Constraint { lhs, rhs, span })
+    }
+
     fn unify(&mut self) {
-        while let Some((ty1, ty2)) = self.constraints.pop() {
-            if ty1 == ty2 {
+        while let Some(Constraint { lhs, rhs, span }) = self.constraints.pop_front() {
+            if lhs == rhs {
                 continue;
-            } else if let Ty::Var(x) = ty1 {
-                self.replace(x, &ty2);
-                self.substitutions.insert(x, ty2);
-            } else if let Ty::Var(x) = ty2 {
-                self.replace(x, &ty1);
-                self.substitutions.insert(x, ty1);
+            } else if let Ty::Var(x) = lhs {
+                let (line, col) = self.lang.source_map().map_offset(span.start());
+                println!(
+                    "Unified constraint: {lhs} = {rhs} from {}:{}",
+                    line + 1,
+                    col + 1
+                );
+                self.replace(x, &rhs);
+                self.substitutions.insert(x, rhs);
+            } else if let Ty::Var(x) = rhs {
+                let (line, col) = self.lang.source_map().map_offset(span.start());
+                println!(
+                    "Unified constraint: {lhs} = {rhs} from {}:{}",
+                    line + 1,
+                    col + 1
+                );
+                self.replace(x, &lhs);
+                self.substitutions.insert(x, lhs);
             } else {
-                match (ty1, ty2) {
-                    (Ty::Fn(ty1), Ty::Fn(ty2)) => {
-                        self.constraints.push((*ty1.arg, *ty2.arg));
-                        self.constraints.push((*ty1.ret, *ty2.ret));
+                match (lhs, rhs) {
+                    (Ty::Fn(lhs), Ty::Fn(rhs)) => {
+                        self.add_constraint(*lhs.arg, *rhs.arg, span);
+                        self.add_constraint(*lhs.ret, *rhs.ret, span);
                     }
-                    (ty1, ty2) => {
-                        // FIXME: we need line information here.
+                    (lhs, rhs) => {
                         self.lang
-                            .error(Span::DUMMY, format!("Cannot unify {ty1} with {ty2}."));
+                            .error(span, format!("Expected type {lhs}, found {rhs}."));
                     }
                 }
             }
@@ -215,7 +244,7 @@ impl<'ctx> TyChecker<'ctx> {
     }
 
     fn replace(&mut self, var: VarTy, ty: &Ty) {
-        for (lhs, rhs) in &mut self.constraints {
+        for Constraint { lhs, rhs, .. } in &mut self.constraints {
             replace(lhs, var, ty);
             replace(rhs, var, ty);
         }
@@ -279,8 +308,7 @@ impl<'ctx> TyChecker<'ctx> {
                 }
                 None => {
                     // FIXME: we need line information here
-                    self.lang
-                        .error(Span::DUMMY, format!("Cannot resolve type {var}"));
+                    self.lang.error(Span::DUMMY, ("Cannot resolve type."));
                 }
             },
             Ty::Fn(fn_ty) => {

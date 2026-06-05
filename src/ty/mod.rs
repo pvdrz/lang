@@ -2,7 +2,7 @@ use std::fmt;
 
 use crate::def_gen;
 
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Ty {
     Var(VarTy),
     Int,
@@ -14,13 +14,13 @@ pub(crate) enum Ty {
     Fn(FnTy),
 }
 
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct FnTy {
     pub(crate) arg: Box<Ty>,
     pub(crate) ret: Box<Ty>,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) struct VarTy(usize);
 
 def_gen!(VarTyGen => VarTy);

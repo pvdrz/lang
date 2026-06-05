@@ -4,8 +4,7 @@ use crate::{
     Lang,
     ast::ExprLet,
     ast::{
-        BinOp, Expr, ExprApp, ExprBinary, ExprIf, ExprUnary, Ident, Literal, LiteralKind,
-        Pat, UnOp,
+        BinOp, Expr, ExprApp, ExprBinary, ExprIf, ExprUnary, Ident, Literal, LiteralKind, Pat, UnOp,
     },
     source_map::Span,
     token::{Token, TokenKind},

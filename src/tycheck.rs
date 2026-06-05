@@ -27,7 +27,7 @@ impl<'ctx> TyChecker<'ctx> {
         }
     }
 
-    pub(crate) fn infer_type(&mut self, expr: &mut Expr<Ty>) -> Ty {
+    pub(crate) fn infer_type(&mut self, expr: &mut Expr) -> Ty {
         let mut ty = self.type_expr(expr);
         self.unify();
         self.substitute_expr(expr);
@@ -35,7 +35,7 @@ impl<'ctx> TyChecker<'ctx> {
         ty
     }
 
-    fn type_expr(&mut self, expr: &Expr<Ty>) -> Ty {
+    fn type_expr(&mut self, expr: &Expr) -> Ty {
         match expr {
             Expr::Lit(literal) => self.type_literal(literal),
             Expr::Ident(def_id) => self.type_def_id(def_id),
@@ -61,7 +61,7 @@ impl<'ctx> TyChecker<'ctx> {
         self.assumptions[def_id].clone()
     }
 
-    fn type_expr_unary(&mut self, expr_unary: &ExprUnary<Ty>) -> Ty {
+    fn type_expr_unary(&mut self, expr_unary: &ExprUnary) -> Ty {
         let expr_ty = self.type_expr(&expr_unary.expr);
         match expr_unary.op {
             UnOp::Neg => {
@@ -75,7 +75,7 @@ impl<'ctx> TyChecker<'ctx> {
         }
     }
 
-    fn type_expr_binary(&mut self, expr_binary: &ExprBinary<Ty>) -> Ty {
+    fn type_expr_binary(&mut self, expr_binary: &ExprBinary) -> Ty {
         let lhs_ty = self.type_expr(&expr_binary.lhs);
         let rhs_ty = self.type_expr(&expr_binary.rhs);
         self.constraints.push((lhs_ty.clone(), rhs_ty));
@@ -100,7 +100,7 @@ impl<'ctx> TyChecker<'ctx> {
         }
     }
 
-    fn type_expr_if(&mut self, expr_if: &ExprIf<Ty>) -> Ty {
+    fn type_expr_if(&mut self, expr_if: &ExprIf) -> Ty {
         let cond_ty = self.type_expr(&expr_if.cond);
         self.constraints.push((Ty::Bool, cond_ty));
 
@@ -118,7 +118,7 @@ impl<'ctx> TyChecker<'ctx> {
         }
     }
 
-    fn type_expr_case(&mut self, expr_case: &ExprCase<Ty>) -> Ty {
+    fn type_expr_case(&mut self, expr_case: &ExprCase) -> Ty {
         let expr_ty = self.type_expr(&expr_case.expr);
 
         let mut branch_tys = Vec::new();
@@ -147,7 +147,7 @@ impl<'ctx> TyChecker<'ctx> {
         }
     }
 
-    fn type_expr_let(&mut self, expr_let: &ExprLet<Ty>) -> Ty {
+    fn type_expr_let(&mut self, expr_let: &ExprLet) -> Ty {
         let mut lhs_ty = expr_let.ret_ty.clone();
 
         for (arg, arg_ty) in expr_let.args.iter().rev() {
@@ -172,7 +172,7 @@ impl<'ctx> TyChecker<'ctx> {
         body_ty
     }
 
-    fn type_expr_app(&mut self, expr_app: &ExprApp<Ty>) -> Ty {
+    fn type_expr_app(&mut self, expr_app: &ExprApp) -> Ty {
         let func_ty = self.type_expr(&expr_app.func);
         let arg_ty = self.type_expr(&expr_app.arg);
         let ret_ty = self.lang.gen_var_ty();
@@ -221,7 +221,7 @@ impl<'ctx> TyChecker<'ctx> {
         }
     }
 
-    fn substitute_expr(&self, expr: &mut Expr<Ty>) {
+    fn substitute_expr(&self, expr: &mut Expr) {
         match expr {
             Expr::Lit(_) | Expr::Ident(_) => (),
             Expr::Unary(expr_unary) => self.substitute_expr_unary(expr_unary),
@@ -233,16 +233,16 @@ impl<'ctx> TyChecker<'ctx> {
         }
     }
 
-    fn substitute_expr_unary(&self, expr_unary: &mut ExprUnary<Ty>) {
+    fn substitute_expr_unary(&self, expr_unary: &mut ExprUnary) {
         self.substitute_expr(&mut expr_unary.expr);
     }
 
-    fn substitute_expr_binary(&self, expr_binary: &mut ExprBinary<Ty>) {
+    fn substitute_expr_binary(&self, expr_binary: &mut ExprBinary) {
         self.substitute_expr(&mut expr_binary.lhs);
         self.substitute_expr(&mut expr_binary.rhs);
     }
 
-    fn substitute_expr_if(&self, expr_if: &mut ExprIf<Ty>) {
+    fn substitute_expr_if(&self, expr_if: &mut ExprIf) {
         self.substitute_expr(&mut expr_if.cond);
         self.substitute_expr(&mut expr_if.do_branch);
         if let Some(else_branch) = expr_if.else_branch.as_deref_mut() {
@@ -250,7 +250,7 @@ impl<'ctx> TyChecker<'ctx> {
         }
     }
 
-    fn substitute_expr_case(&self, expr_case: &mut ExprCase<Ty>) {
+    fn substitute_expr_case(&self, expr_case: &mut ExprCase) {
         self.substitute_expr(&mut expr_case.expr);
 
         for (_, expr) in &mut expr_case.arms {
@@ -258,13 +258,13 @@ impl<'ctx> TyChecker<'ctx> {
         }
     }
 
-    fn substitute_expr_let(&self, expr_let: &mut ExprLet<Ty>) {
+    fn substitute_expr_let(&self, expr_let: &mut ExprLet) {
         self.substitute_ty(&mut expr_let.ret_ty);
         self.substitute_expr(&mut expr_let.rhs);
         self.substitute_expr(&mut expr_let.body);
     }
 
-    fn substitute_expr_app(&self, expr_app: &mut ExprApp<Ty>) {
+    fn substitute_expr_app(&self, expr_app: &mut ExprApp) {
         self.substitute_expr(&mut expr_app.func);
         self.substitute_expr(&mut expr_app.arg);
     }

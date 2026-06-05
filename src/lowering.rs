@@ -83,7 +83,7 @@ impl<'ctx> Resolver<'ctx> {
         }
     }
 
-    pub(crate) fn lower_expr(&mut self, expr: &ast::Expr) -> ir::Expr<Ty> {
+    pub(crate) fn lower_expr(&mut self, expr: &ast::Expr) -> ir::Expr {
         match expr {
             ast::Expr::Lit(literal) => ir::Expr::Lit(self.lower_literal(literal)),
             ast::Expr::Ident(ident) => ir::Expr::Ident(self.lower_ident(ident)),
@@ -101,7 +101,7 @@ impl<'ctx> Resolver<'ctx> {
         literal.clone()
     }
 
-    fn lower_expr_unary(&mut self, expr_unary: &ast::ExprUnary) -> ir::ExprUnary<Ty> {
+    fn lower_expr_unary(&mut self, expr_unary: &ast::ExprUnary) -> ir::ExprUnary {
         let op = self.lower_un_op(&expr_unary.op);
         let expr = self.lower_expr(&expr_unary.expr);
 
@@ -115,7 +115,7 @@ impl<'ctx> Resolver<'ctx> {
         *un_op
     }
 
-    fn lower_expr_binary(&mut self, expr_binary: &ast::ExprBinary) -> ir::ExprBinary<Ty> {
+    fn lower_expr_binary(&mut self, expr_binary: &ast::ExprBinary) -> ir::ExprBinary {
         let lhs = self.lower_expr(&expr_binary.lhs);
         let op = self.lower_bin_op(&expr_binary.op);
         let rhs = self.lower_expr(&expr_binary.rhs);
@@ -131,11 +131,11 @@ impl<'ctx> Resolver<'ctx> {
         *bin_op
     }
 
-    fn lower_expr_group(&mut self, expr_group: &ast::ExprGroup) -> ir::Expr<Ty> {
+    fn lower_expr_group(&mut self, expr_group: &ast::ExprGroup) -> ir::Expr {
         self.lower_expr(&expr_group.expr)
     }
 
-    fn lower_expr_if(&mut self, expr_if: &ast::ExprIf) -> ir::ExprIf<Ty> {
+    fn lower_expr_if(&mut self, expr_if: &ast::ExprIf) -> ir::ExprIf {
         let cond = self.lower_expr(&expr_if.cond);
         let do_branch = self.lower_expr(&expr_if.do_branch);
         let else_branch = expr_if
@@ -150,7 +150,7 @@ impl<'ctx> Resolver<'ctx> {
         }
     }
 
-    fn lower_expr_case(&mut self, expr_case: &ast::ExprCase) -> ir::ExprCase<Ty> {
+    fn lower_expr_case(&mut self, expr_case: &ast::ExprCase) -> ir::ExprCase {
         let expr = self.lower_expr(&expr_case.expr);
         let arms = expr_case
             .arms
@@ -171,7 +171,7 @@ impl<'ctx> Resolver<'ctx> {
         }
     }
 
-    fn lower_expr_let(&mut self, expr_let: &ast::ExprLet) -> ir::ExprLet<Ty> {
+    fn lower_expr_let(&mut self, expr_let: &ast::ExprLet) -> ir::ExprLet {
         self.enter_scope();
 
         let lhs = self.bind(&expr_let.lhs);
@@ -195,7 +195,7 @@ impl<'ctx> Resolver<'ctx> {
         }
     }
 
-    fn lower_expr_app(&mut self, expr_app: &ast::ExprApp) -> ir::ExprApp<Ty> {
+    fn lower_expr_app(&mut self, expr_app: &ast::ExprApp) -> ir::ExprApp {
         let func = self.lower_expr(&expr_app.func);
         let arg = self.lower_expr(&expr_app.arg);
 

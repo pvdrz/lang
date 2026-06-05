@@ -2,10 +2,12 @@ use std::fmt::Display;
 
 use crate::{
     Lang,
+    ast::ExprLet,
     ast::{
-        BinOp, Expr, ExprApp, ExprBinary, ExprIf, ExprLet, ExprUnary, Ident, Literal, LiteralKind,
+        BinOp, Expr, ExprApp, ExprBinary, ExprIf, ExprUnary, Ident, Literal, LiteralKind,
         Pat, UnOp,
     },
+    source_map::Span,
     token::{Token, TokenKind},
 };
 
@@ -35,44 +37,18 @@ impl<'ctx> Parser<'ctx> {
     }
 
     fn expression(&mut self) -> Result<Expr, ParseError> {
-        if self.matches(&TokenKind::If) {
-            self.conditional()
-        } else if self.matches(&TokenKind::Case) {
-            self.case()
-        } else if self.matches(&TokenKind::Let) {
-            if let Some(lhs) = self.matches_pattern(match_ident) {
-                let mut args = vec![];
-                while {
-                    if let Some(ident) = self.matches_pattern(match_ident) {
-                        args.push(ident);
-
-                        true
-                    } else {
-                        false
-                    }
-                } {}
-
-                self.consume(&TokenKind::Equal, "Expected `=` in let binding.")?;
-                let rhs = self.expression()?;
-
-                self.consume(&TokenKind::Semicolon, "Expected `;` in let binding.")?;
-
-                let body = self.expression()?;
-                Ok(Expr::Let(ExprLet {
-                    lhs,
-                    args,
-                    rhs: Box::new(rhs),
-                    body: Box::new(body),
-                }))
-            } else {
-                self.err(self.peek(), "Expected identifier in let binding.")
-            }
+        if let Some(span) = self.matches(&TokenKind::If) {
+            self.conditional(span)
+        } else if let Some(span) = self.matches(&TokenKind::Case) {
+            self.case(span)
+        } else if let Some(span) = self.matches(&TokenKind::Let) {
+            self.let_binding(span)
         } else {
             self.logic_or()
         }
     }
 
-    fn conditional(&mut self) -> Result<Expr, ParseError> {
+    fn conditional(&mut self, lspan: Span) -> Result<Expr, ParseError> {
         let cond = self.expression()?;
 
         self.consume(&TokenKind::Do, "Expected `do` in conditional.")?;
@@ -80,42 +56,85 @@ impl<'ctx> Parser<'ctx> {
 
         let mut else_branch = None;
 
-        if self.matches(&TokenKind::Else) {
+        if self.matches(&TokenKind::Else).is_some() {
             else_branch = Some(Box::new(self.expression()?));
         }
 
-        self.consume(&TokenKind::End, "Expected `end` in conditional.")?;
+        let rspan = self
+            .consume(&TokenKind::End, "Expected `end` in conditional.")?
+            .span;
 
         Ok(Expr::If(ExprIf {
             cond: Box::new(cond),
             do_branch: Box::new(then_branch),
             else_branch,
+            span: lspan.merge(&rspan),
         }))
     }
 
-    fn case(&mut self) -> Result<Expr, ParseError> {
+    fn case(&mut self, lspan: Span) -> Result<Expr, ParseError> {
         let expr = self.expression()?;
 
         self.consume(&TokenKind::Do, "Expected `do` in case.")?;
 
         let mut arms = Vec::new();
 
-        while !self.matches(&TokenKind::End) {
-            let pat = self.pat()?;
+        while {
+            if let Some(rspan) = self.matches(&TokenKind::End) {
+                return Ok(Expr::Case(crate::ast::ExprCase {
+                    span: lspan.merge(&rspan),
+                    expr: Box::new(expr),
+                    arms,
+                }));
+            } else {
+                let pat = self.pat()?;
 
-            self.consume(&TokenKind::Arrow, "Expected `->` in case.")?;
+                self.consume(&TokenKind::Arrow, "Expected `->` in case.")?;
 
-            let expr = self.expression()?;
+                let expr = self.expression()?;
 
-            self.consume(&TokenKind::Comma, "Expected `,` in case.")?;
+                self.consume(&TokenKind::Comma, "Expected `,` in case.")?;
 
-            arms.push((pat, expr));
+                arms.push((pat, expr));
+
+                true
+            }
+        } {}
+
+        self.err(self.peek(), "Expected `end` in case.")
+    }
+
+    fn let_binding(&mut self, lspan: Span) -> Result<Expr, ParseError> {
+        if let Some(lhs) = self.matches_pattern(match_ident) {
+            let mut args = vec![];
+            while {
+                if let Some(ident) = self.matches_pattern(match_ident) {
+                    args.push(ident);
+
+                    true
+                } else {
+                    false
+                }
+            } {}
+
+            self.consume(&TokenKind::Equal, "Expected `=` in let binding.")?;
+            let rhs = self.expression()?;
+
+            let rspan = self
+                .consume(&TokenKind::Semicolon, "Expected `;` in let binding.")?
+                .span;
+
+            let body = self.expression()?;
+            Ok(Expr::Let(ExprLet {
+                span: lspan.merge(&rspan),
+                lhs,
+                args,
+                rhs: Box::new(rhs),
+                body: Box::new(body),
+            }))
+        } else {
+            self.err(self.peek(), "Expected identifier in let binding.")
         }
-
-        Ok(Expr::Case(crate::ast::ExprCase {
-            expr: Box::new(expr),
-            arms,
-        }))
     }
 
     fn maybe_literal(&mut self) -> Option<Literal> {
@@ -187,6 +206,7 @@ impl<'ctx> Parser<'ctx> {
                 Some(op) => {
                     let rhs = self.logic_and()?;
                     expr = Expr::Binary(ExprBinary {
+                        span: expr.span().merge(&rhs.span()),
                         lhs: Box::new(expr),
                         op,
                         rhs: Box::new(rhs),
@@ -212,6 +232,7 @@ impl<'ctx> Parser<'ctx> {
                 Some(op) => {
                     let rhs = self.equality()?;
                     expr = Expr::Binary(ExprBinary {
+                        span: expr.span().merge(&rhs.span()),
                         lhs: Box::new(expr),
                         op,
                         rhs: Box::new(rhs),
@@ -238,6 +259,7 @@ impl<'ctx> Parser<'ctx> {
                 Some(op) => {
                     let rhs = self.comparison()?;
                     expr = Expr::Binary(ExprBinary {
+                        span: expr.span().merge(&rhs.span()),
                         lhs: Box::new(expr),
                         op,
                         rhs: Box::new(rhs),
@@ -266,6 +288,7 @@ impl<'ctx> Parser<'ctx> {
                 Some(op) => {
                     let rhs = self.term()?;
                     expr = Expr::Binary(ExprBinary {
+                        span: expr.span().merge(&rhs.span()),
                         lhs: Box::new(expr),
                         op,
                         rhs: Box::new(rhs),
@@ -292,6 +315,7 @@ impl<'ctx> Parser<'ctx> {
                 Some(op) => {
                     let rhs = self.factor()?;
                     expr = Expr::Binary(ExprBinary {
+                        span: expr.span().merge(&rhs.span()),
                         lhs: Box::new(expr),
                         op,
                         rhs: Box::new(rhs),
@@ -317,6 +341,7 @@ impl<'ctx> Parser<'ctx> {
                 Some(op) => {
                     let rhs = self.unary()?;
                     expr = Expr::Binary(ExprBinary {
+                        span: expr.span().merge(&rhs.span()),
                         lhs: Box::new(expr),
                         op,
                         rhs: Box::new(rhs),
@@ -332,14 +357,15 @@ impl<'ctx> Parser<'ctx> {
     }
 
     fn unary(&mut self) -> Result<Expr, ParseError> {
-        if let Some(op) = self.matches_pattern(|tk| match &tk.kind {
-            TokenKind::Bang => Some(UnOp::Not),
-            TokenKind::Minus => Some(UnOp::Neg),
+        if let Some((op, lspan)) = self.matches_pattern(|tk| match &tk.kind {
+            TokenKind::Bang => Some((UnOp::Not, tk.span)),
+            TokenKind::Minus => Some((UnOp::Neg, tk.span)),
             _ => None,
         }) {
             let expr = self.unary()?;
 
             Ok(Expr::Unary(ExprUnary {
+                span: lspan.merge(&expr.span()),
                 op,
                 expr: Box::new(expr),
             }))
@@ -361,6 +387,7 @@ impl<'ctx> Parser<'ctx> {
         {
             let arg = self.primary()?;
             expr = Expr::Apply(ExprApp {
+                span: expr.span().merge(&arg.span()),
                 func: Box::new(expr),
                 arg: Box::new(arg),
             })
@@ -374,11 +401,19 @@ impl<'ctx> Parser<'ctx> {
             Expr::Lit(literal)
         } else if let Some(ident) = self.matches_pattern(match_ident) {
             Expr::Ident(ident)
-        } else if self.matches(&TokenKind::LeftParen) {
+        } else if let Some(lspan) = self.matches_pattern(|tk| match &tk.kind {
+            TokenKind::LeftParen => Some(tk.span),
+            _ => None,
+        }) {
             let expr = self.expression()?;
-            self.consume(&TokenKind::RightParen, "Expected ')' after epression.")?;
+
+            let rspan = self
+                .consume(&TokenKind::RightParen, "Expected ')' after epression.")?
+                .span;
+
             Expr::Group(crate::ast::ExprGroup {
                 expr: Box::new(expr),
+                span: lspan.merge(&rspan),
             })
         } else {
             return self.err(self.peek(), "Expected expression.");
@@ -396,9 +431,8 @@ impl<'ctx> Parser<'ctx> {
         }
     }
 
-    fn matches(&mut self, kind: &TokenKind) -> bool {
-        self.matches_pattern(|tk| (&tk.kind == kind).then_some(()))
-            .is_some()
+    fn matches(&mut self, kind: &TokenKind) -> Option<Span> {
+        self.matches_pattern(|tk| (&tk.kind == kind).then(|| tk.span))
     }
 
     fn check_pattern<T, F: Fn(&Token) -> Option<T>>(&self, pat: F) -> Option<T> {

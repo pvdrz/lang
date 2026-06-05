@@ -1,6 +1,6 @@
 use std::fmt::Write;
 
-use crate::ast::{BinOp, Expr, Literal, UnOp, visitor::Visitor};
+use crate::ast::{BinOp, Expr, Literal, LiteralKind, UnOp, visitor::Visitor};
 
 pub(crate) fn pretty_print(expr: &Expr) -> String {
     let mut pp = PrettyPrinter { buf: String::new() };
@@ -30,12 +30,12 @@ impl Visitor for PrettyPrinter {
     }
 
     fn visit_literal(&mut self, expr_lit: &Literal) {
-        let _ = match expr_lit {
-            Literal::Int(int) => write!(self.buf, "{int}"),
-            Literal::Float(float) => write!(self.buf, "{float}"),
-            Literal::Str(string) => self.buf.write_str(string),
-            Literal::True => self.buf.write_str("true"),
-            Literal::False => self.buf.write_str("false"),
+        let _ = match &expr_lit.kind {
+            LiteralKind::Int(int) => write!(self.buf, "{int}"),
+            LiteralKind::Float(float) => write!(self.buf, "{float}"),
+            LiteralKind::Str(string) => self.buf.write_str(string),
+            LiteralKind::True => self.buf.write_str("true"),
+            LiteralKind::False => self.buf.write_str("false"),
         };
     }
 

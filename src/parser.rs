@@ -3,7 +3,8 @@ use std::fmt::Display;
 use crate::{
     Lang,
     ast::{
-        BinOp, Expr, ExprApp, ExprBinary, ExprIf, ExprLet, ExprUnary, Ident, Literal, Pat, UnOp,
+        BinOp, Expr, ExprApp, ExprBinary, ExprIf, ExprLet, ExprUnary, Ident, Literal, LiteralKind,
+        Pat, UnOp,
     },
     token::{Token, TokenKind},
 };
@@ -117,28 +118,57 @@ impl<'ctx> Parser<'ctx> {
         }))
     }
 
+    fn maybe_literal(&mut self) -> Option<Literal> {
+        if let Some(literal) = self.matches_pattern(|tk| match &tk.kind {
+            TokenKind::False => Some(Literal {
+                kind: LiteralKind::False,
+                span: tk.span,
+            }),
+            _ => None,
+        }) {
+            Some(literal)
+        } else if let Some(literal) = self.matches_pattern(|tk| match &tk.kind {
+            TokenKind::True => Some(Literal {
+                kind: LiteralKind::True,
+                span: tk.span,
+            }),
+            _ => None,
+        }) {
+            Some(literal)
+        } else if let Some(literal) = self.matches_pattern(|tk| match &tk.kind {
+            TokenKind::Integer(int) => Some(Literal {
+                kind: LiteralKind::Int(*int),
+                span: tk.span,
+            }),
+            _ => None,
+        }) {
+            Some(literal)
+        } else if let Some(literal) = self.matches_pattern(|tk| match &tk.kind {
+            TokenKind::Float(float) => Some(Literal {
+                kind: LiteralKind::Float(*float),
+                span: tk.span,
+            }),
+            _ => None,
+        }) {
+            Some(literal)
+        } else if let Some(literal) = self.matches_pattern(|tk| match &tk.kind {
+            TokenKind::String(s) => Some(Literal {
+                kind: LiteralKind::Str(s.clone()),
+                span: tk.span,
+            }),
+            _ => None,
+        }) {
+            Some(literal)
+        } else {
+            None
+        }
+    }
+
     fn pat(&mut self) -> Result<Pat, ParseError> {
         let pat = if let Some(ident) = self.matches_pattern(match_ident) {
             Pat::Ident(ident)
-        } else if self.matches(&TokenKind::False) {
-            Pat::Lit(Literal::False)
-        } else if self.matches(&TokenKind::True) {
-            Pat::Lit(Literal::True)
-        } else if let Some(int) = self.matches_pattern(|tk| match &tk.kind {
-            TokenKind::Integer(int) => Some(*int),
-            _ => None,
-        }) {
-            Pat::Lit(Literal::Int(int))
-        } else if let Some(float) = self.matches_pattern(|tk| match &tk.kind {
-            TokenKind::Float(float) => Some(*float),
-            _ => None,
-        }) {
-            Pat::Lit(Literal::Float(float))
-        } else if let Some(s) = self.matches_pattern(|tk| match &tk.kind {
-            TokenKind::String(s) => Some(s.clone()),
-            _ => None,
-        }) {
-            Pat::Lit(Literal::Str(s))
+        } else if let Some(literal) = self.maybe_literal() {
+            Pat::Lit(literal)
         } else {
             return self.err(self.peek(), "Expected pattern in case.");
         };
@@ -340,25 +370,8 @@ impl<'ctx> Parser<'ctx> {
     }
 
     fn primary(&mut self) -> Result<Expr, ParseError> {
-        let expr = if self.matches(&TokenKind::False) {
-            Expr::Lit(Literal::False)
-        } else if self.matches(&TokenKind::True) {
-            Expr::Lit(Literal::True)
-        } else if let Some(int) = self.matches_pattern(|tk| match &tk.kind {
-            TokenKind::Integer(int) => Some(*int),
-            _ => None,
-        }) {
-            Expr::Lit(Literal::Int(int))
-        } else if let Some(float) = self.matches_pattern(|tk| match &tk.kind {
-            TokenKind::Float(float) => Some(*float),
-            _ => None,
-        }) {
-            Expr::Lit(Literal::Float(float))
-        } else if let Some(s) = self.matches_pattern(|tk| match &tk.kind {
-            TokenKind::String(s) => Some(s.clone()),
-            _ => None,
-        }) {
-            Expr::Lit(Literal::Str(s))
+        let expr = if let Some(literal) = self.maybe_literal() {
+            Expr::Lit(literal)
         } else if let Some(ident) = self.matches_pattern(match_ident) {
             Expr::Ident(ident)
         } else if self.matches(&TokenKind::LeftParen) {

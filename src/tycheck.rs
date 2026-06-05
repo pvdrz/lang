@@ -3,7 +3,8 @@ use std::collections::HashMap;
 use crate::{
     Lang,
     ir::{
-        DefId, Expr, ExprApp, ExprBinary, ExprCase, ExprIf, ExprLet, ExprUnary, Literal, Pat, UnOp,
+        DefId, Expr, ExprApp, ExprBinary, ExprCase, ExprIf, ExprLet, ExprUnary, Literal,
+        LiteralKind, Pat, UnOp,
     },
     source_map::Span,
     ty::{FnTy, Ty, VarTy},
@@ -48,11 +49,11 @@ impl<'ctx> TyChecker<'ctx> {
     }
 
     fn type_literal(&mut self, literal: &Literal) -> Ty {
-        match literal {
-            Literal::Int(_) => Ty::Int,
-            Literal::Float(_) => Ty::Float,
-            Literal::Str(_) => Ty::String,
-            Literal::True | Literal::False => Ty::Bool,
+        match &literal.kind {
+            LiteralKind::Int(_) => Ty::Int,
+            LiteralKind::Float(_) => Ty::Float,
+            LiteralKind::Str(_) => Ty::String,
+            LiteralKind::True | LiteralKind::False => Ty::Bool,
         }
     }
 

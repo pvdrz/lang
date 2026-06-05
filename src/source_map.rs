@@ -18,6 +18,10 @@ impl Span {
     pub(crate) fn end(&self) -> usize {
         self.end
     }
+
+    pub(crate) fn merge(&self, other: &Self) -> Self {
+        Self::new(self.start.min(other.start), self.end.max(other.end))
+    }
 }
 
 pub(crate) struct SourceMap {

@@ -47,7 +47,13 @@ impl fmt::Display for Ident {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) enum Literal {
+pub(crate) struct Literal {
+    pub(crate) kind: LiteralKind,
+    pub(crate) span: Span,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) enum LiteralKind {
     Int(isize),
     Float(f64),
     Str(String),

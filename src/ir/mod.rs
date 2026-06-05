@@ -1,6 +1,6 @@
 mod expr;
 
-pub(crate) use crate::ast::{BinOp, Literal, UnOp};
+pub(crate) use crate::ast::{BinOp, LiteralKind, Literal, UnOp};
 use crate::def_gen;
 pub(crate) use crate::ir::expr::*;
 

@@ -3,8 +3,8 @@ use std::collections::{HashMap, VecDeque};
 use crate::{
     Lang,
     ir::{
-        DefId, Expr, ExprApp, ExprBinary, ExprCase, ExprIf, ExprLet, ExprUnary, Ident, Literal,
-        LiteralKind, Pat, UnOp,
+        BinOp, DefId, Expr, ExprApp, ExprBinary, ExprCase, ExprIf, ExprLet, ExprUnary, Ident,
+        Literal, LiteralKind, Pat, UnOp,
     },
     source_map::Span,
     ty::{FnTy, Ty, VarTy},
@@ -87,18 +87,16 @@ impl<'ctx> TyChecker<'ctx> {
         self.add_constraint(lhs_ty.clone(), rhs_ty, expr_binary.span);
 
         match expr_binary.op {
-            crate::ir::BinOp::Lt
-            | crate::ir::BinOp::Le
-            | crate::ir::BinOp::Gt
-            | crate::ir::BinOp::Ge
-            | crate::ir::BinOp::Add
-            | crate::ir::BinOp::Sub
-            | crate::ir::BinOp::Mul
-            | crate::ir::BinOp::Div => {
+            BinOp::Eq | BinOp::Ne => Ty::Bool,
+            BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge => {
+                self.add_constraint(Ty::Int, lhs_ty.clone(), expr_binary.lhs.span());
+                Ty::Bool
+            }
+            BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div => {
                 self.add_constraint(Ty::Int, lhs_ty.clone(), expr_binary.lhs.span());
                 Ty::Int
             }
-            crate::ir::BinOp::And | crate::ir::BinOp::Or => {
+            BinOp::And | BinOp::Or => {
                 self.add_constraint(Ty::Bool, lhs_ty.clone(), expr_binary.lhs.span());
                 Ty::Bool
             }
@@ -181,7 +179,9 @@ impl<'ctx> TyChecker<'ctx> {
 
     fn type_expr_app(&mut self, expr_app: &ExprApp) -> Ty {
         let func_ty = self.type_expr(&expr_app.func);
+        println!("fn type is: {func_ty}");
         let arg_ty = self.type_expr(&expr_app.arg);
+        println!("arg type is: {arg_ty}");
         let ret_ty = self.lang.gen_var_ty(expr_app.span);
 
         self.add_constraint(

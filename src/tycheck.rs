@@ -182,7 +182,7 @@ impl<'ctx> TyChecker<'ctx> {
     fn type_expr_app(&mut self, expr_app: &ExprApp) -> Ty {
         let func_ty = self.type_expr(&expr_app.func);
         let arg_ty = self.type_expr(&expr_app.arg);
-        let ret_ty = self.lang.gen_var_ty();
+        let ret_ty = self.lang.gen_var_ty(expr_app.span);
 
         self.add_constraint(
             func_ty,
@@ -307,8 +307,8 @@ impl<'ctx> TyChecker<'ctx> {
                     self.substitute_ty(ty);
                 }
                 None => {
-                    // FIXME: we need line information here
-                    self.lang.error(Span::DUMMY, ("Cannot resolve type."));
+                    self.lang
+                        .error(self.lang.var_ty_span(*var), "Cannot resolve type.");
                 }
             },
             Ty::Fn(fn_ty) => {

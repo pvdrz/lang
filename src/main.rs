@@ -10,7 +10,7 @@ mod tycheck;
 mod utils;
 mod source_map;
 
-use std::{cell::RefCell, fmt::Display, io, ops::DerefMut, path::Path};
+use std::{cell::RefCell, collections::HashMap, fmt::Display, io, ops::DerefMut, path::Path};
 
 use crate::{
     ast::pretty_printer::pretty_print,
@@ -19,15 +19,16 @@ use crate::{
     parser::Parser,
     scanner::Scanner,
     source_map::{SourceMap, Span},
-    ty::{Ty, VarTyGen},
+    ty::{Ty, VarTy, VarTyGen},
     tycheck::TyChecker,
 };
 
 struct Lang {
     had_error: RefCell<bool>,
     source_map: RefCell<SourceMap>,
-    var_ty_gen: RefCell<VarTyGen>,
     def_id_gen: RefCell<DefIdGen>,
+    var_ty_gen: RefCell<VarTyGen>,
+    var_ty_spans: RefCell<HashMap<VarTy, Span>>,
 }
 
 impl Lang {
@@ -35,8 +36,9 @@ impl Lang {
         Self {
             had_error: false.into(),
             source_map: SourceMap::new().into(),
-            var_ty_gen: VarTyGen::new().into(),
             def_id_gen: DefIdGen::new().into(),
+            var_ty_gen: VarTyGen::new().into(),
+            var_ty_spans: HashMap::new().into(),
         }
     }
 
@@ -46,9 +48,14 @@ impl Lang {
         eprintln!("Error at {}:{}: {msg}", line + 1, col + 1);
     }
 
-    fn gen_var_ty(&self) -> Ty {
+    fn gen_var_ty(&self, span: Span) -> Ty {
         let var = self.var_ty_gen.borrow_mut().generate();
+        self.var_ty_spans.borrow_mut().insert(var, span);
         Ty::Var(var)
+    }
+
+    fn var_ty_span(&self, var: VarTy) -> Span {
+        self.var_ty_spans.borrow()[&var]
     }
 
     fn gen_def_id(&self) -> DefId {

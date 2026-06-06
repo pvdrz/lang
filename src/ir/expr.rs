@@ -1,7 +1,6 @@
 use crate::{
     ir::{BinOp, Ident, Literal, Pat, UnOp},
     source_map::Span,
-    ty::Ty,
 };
 
 #[derive(Debug)]
@@ -64,8 +63,7 @@ pub(crate) struct ExprCase {
 #[derive(Debug)]
 pub(crate) struct ExprLet {
     pub(crate) lhs: Ident,
-    pub(crate) ret_ty: Ty,
-    pub(crate) args: Vec<(Ident, Ty)>,
+    pub(crate) args: Vec<Ident>,
     pub(crate) rhs: Box<Expr>,
     pub(crate) body: Box<Expr>,
     pub(crate) span: Span,

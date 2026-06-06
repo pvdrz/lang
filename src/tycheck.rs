@@ -163,20 +163,22 @@ impl<'ctx> TyChecker<'ctx> {
     }
 
     fn type_expr_let(&mut self, expr_let: &ExprLet) -> Ty {
-        let mut lhs_ty = expr_let.ret_ty.clone();
+        let ret_ty = self.lang.gen_var_ty(expr_let.lhs.span);
+        let mut lhs_ty = ret_ty.clone();
 
-        for (arg, arg_ty) in expr_let.args.iter().rev() {
+        for arg in expr_let.args.iter().rev() {
+            let arg_ty = self.lang.gen_var_ty(arg.span);
             self.add_assumption(arg.def_id, arg_ty.clone());
             lhs_ty = Ty::Fn(FnTy {
-                arg: Box::new(arg_ty.clone()),
+                arg: Box::new(arg_ty),
                 ret: Box::new(lhs_ty),
             });
         }
 
-        let ret_ty = self.type_expr(&expr_let.rhs);
-        self.add_constraint(expr_let.ret_ty.clone(), ret_ty, expr_let.lhs.span);
+        let infered_ret_ty = self.type_expr(&expr_let.rhs);
+        self.add_constraint(ret_ty, infered_ret_ty, expr_let.lhs.span);
 
-        for (arg, _) in expr_let.args.iter() {
+        for arg in expr_let.args.iter() {
             self.remove_assumption(arg.def_id);
         }
 
@@ -296,7 +298,6 @@ impl<'ctx> TyChecker<'ctx> {
     }
 
     fn substitute_expr_let(&self, expr_let: &mut ExprLet) {
-        self.substitute_ty(&mut expr_let.ret_ty);
         self.substitute_expr(&mut expr_let.rhs);
         self.substitute_expr(&mut expr_let.body);
     }

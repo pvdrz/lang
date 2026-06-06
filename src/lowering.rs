@@ -184,12 +184,7 @@ impl<'ctx> Resolver<'ctx> {
         self.enter_scope();
 
         let lhs = self.bind(&expr_let.lhs);
-        let ret_ty = self.lang.gen_var_ty(lhs.span);
-        let args = expr_let
-            .args
-            .iter()
-            .map(|arg| (self.bind(arg), self.lang.gen_var_ty(arg.span())))
-            .collect();
+        let args = expr_let.args.iter().map(|arg| self.bind(arg)).collect();
         let rhs = self.lower_expr(&expr_let.rhs);
         let body = self.lower_expr(&expr_let.body);
 
@@ -197,7 +192,6 @@ impl<'ctx> Resolver<'ctx> {
 
         ir::ExprLet {
             lhs,
-            ret_ty,
             args,
             rhs: Box::new(rhs),
             body: Box::new(body),

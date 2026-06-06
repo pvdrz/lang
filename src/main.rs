@@ -10,7 +10,14 @@ mod tycheck;
 mod utils;
 mod source_map;
 
-use std::{cell::RefCell, collections::HashMap, fmt::Display, io, ops::DerefMut, path::Path};
+use std::{
+    cell::RefCell,
+    collections::HashMap,
+    fmt::Display,
+    io,
+    ops::{Deref, DerefMut},
+    path::Path,
+};
 
 use crate::{
     ast::pretty_printer::pretty_print,
@@ -27,6 +34,7 @@ struct Lang {
     had_error: RefCell<bool>,
     source_map: RefCell<SourceMap>,
     def_id_gen: RefCell<DefIdGen>,
+    def_id_names: RefCell<HashMap<DefId, String>>,
     var_ty_gen: RefCell<VarTyGen>,
     var_ty_spans: RefCell<HashMap<VarTy, Span>>,
 }
@@ -37,6 +45,7 @@ impl Lang {
             had_error: false.into(),
             source_map: SourceMap::new().into(),
             def_id_gen: DefIdGen::new().into(),
+            def_id_names: HashMap::new().into(),
             var_ty_gen: VarTyGen::new().into(),
             var_ty_spans: HashMap::new().into(),
         }
@@ -58,8 +67,20 @@ impl Lang {
         self.var_ty_spans.borrow()[&var]
     }
 
-    fn gen_def_id(&self) -> DefId {
-        self.def_id_gen.borrow_mut().generate()
+    fn gen_ident(&self, ident: &ast::Ident) -> ir::Ident {
+        let def_id = self.def_id_gen.borrow_mut().generate();
+        self.def_id_names
+            .borrow_mut()
+            .insert(def_id, ident.name().to_owned());
+        ir::Ident {
+            def_id,
+            span: ident.span(),
+        }
+    }
+
+    fn def_id_name(&self, def_id: DefId) -> impl Deref<Target = str> {
+        let r = self.def_id_names.borrow();
+        std::cell::Ref::map(r, |names| names[&def_id].as_str())
     }
 
     fn run_file<P: AsRef<Path>>(&self, path: &P) -> io::Result<()> {

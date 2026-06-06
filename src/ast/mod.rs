@@ -24,6 +24,10 @@ impl Ident {
     pub(crate) fn span(&self) -> Span {
         self.span
     }
+
+    pub(crate) fn name(&self) -> &str {
+        &self.inner
+    }
 }
 
 impl PartialEq for Ident {

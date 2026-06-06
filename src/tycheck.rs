@@ -34,12 +34,12 @@ impl<'ctx> TyChecker<'ctx> {
     }
 
     fn add_assumption(&mut self, def_id: DefId, ty: Ty) {
-        println!("Adding assumption: {def_id:?}: {ty}");
+        println!("Adding assumption: {}: {ty}", def_id.display(self.lang));
         self.assumptions.insert(def_id, ty);
     }
 
     fn remove_assumption(&mut self, def_id: DefId) {
-        println!("Removing assumption for {def_id:?}");
+        println!("Removing assumption for {}", def_id.display(self.lang));
         self.assumptions.remove(&def_id);
     }
 

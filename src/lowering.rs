@@ -2,7 +2,7 @@ use std::collections::{HashMap, hash_map::Entry};
 
 use crate::{
     Lang,
-    ast::{self, Ident},
+    ast::{self},
     ir::{self, DefId},
 };
 
@@ -14,7 +14,7 @@ pub(crate) struct Resolver<'ctx> {
 
 #[derive(Default)]
 struct Scope {
-    inner: HashMap<Ident, ir::DefId>,
+    inner: HashMap<ast::Ident, ir::Ident>,
 }
 
 impl<'ctx> Resolver<'ctx> {
@@ -27,26 +27,23 @@ impl<'ctx> Resolver<'ctx> {
     }
 
     fn bind(&mut self, ident: &ast::Ident) -> ir::Ident {
-        let mut def_id = self.lang.gen_def_id();
+        let mut lowered_ident = self.lang.gen_ident(ident);
 
         match self.scope.inner.entry(ident.clone()) {
             // This means we're shadowing the binding
-            Entry::Occupied(mut entry) => std::mem::swap(entry.get_mut(), &mut def_id),
+            Entry::Occupied(mut entry) => std::mem::swap(entry.get_mut(), &mut lowered_ident),
             Entry::Vacant(entry) => {
-                entry.insert(def_id);
+                entry.insert(lowered_ident);
             }
         }
 
-        ir::Ident {
-            def_id,
-            span: ident.span(),
-        }
+        lowered_ident
     }
 
-    fn resolve(&self, ident: &Ident) -> DefId {
+    fn resolve(&self, ident: &ast::Ident) -> ir::Ident {
         for scope in [&self.scope].into_iter().chain(&self.scopes) {
-            if let Some(def_id) = scope.inner.get(ident).copied() {
-                return def_id;
+            if let Some(lowered) = scope.inner.get(ident).copied() {
+                return lowered;
             }
         }
 
@@ -56,7 +53,10 @@ impl<'ctx> Resolver<'ctx> {
             ident.span(),
             format!("Cannot resolve identifier `{ident}`."),
         );
-        DefId::RIDICULOUS
+        ir::Ident {
+            def_id: DefId::RIDICULOUS,
+            span: ident.span(),
+        }
     }
 
     fn enter_scope(&mut self) {
@@ -75,10 +75,7 @@ impl<'ctx> Resolver<'ctx> {
 
 impl<'ctx> Resolver<'ctx> {
     fn lower_ident(&mut self, ident: &ast::Ident) -> ir::Ident {
-        ir::Ident {
-            def_id: self.resolve(ident),
-            span: ident.span(),
-        }
+        self.resolve(ident)
     }
 
     fn lower_pat(&mut self, pat: &ast::Pat) -> ir::Pat {

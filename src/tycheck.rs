@@ -33,6 +33,16 @@ impl<'ctx> TyChecker<'ctx> {
         }
     }
 
+    fn add_assumption(&mut self, def_id: DefId, ty: Ty) {
+        println!("Adding assumption: {def_id:?}: {ty}");
+        self.assumptions.insert(def_id, ty);
+    }
+
+    fn remove_assumption(&mut self, def_id: DefId) {
+        println!("Removing assumption for {def_id:?}");
+        self.assumptions.remove(&def_id);
+    }
+
     pub(crate) fn infer_type(&mut self, expr: &mut Expr) -> Ty {
         let mut ty = self.type_expr(expr);
         self.unify();
@@ -129,9 +139,9 @@ impl<'ctx> TyChecker<'ctx> {
 
         for (pat, branch) in &expr_case.arms {
             let branch_ty = if let Pat::Ident(ident) = pat {
-                self.assumptions.insert(ident.def_id, expr_ty.clone());
+                self.add_assumption(ident.def_id, expr_ty.clone());
                 let branch_ty = self.type_expr(branch);
-                self.assumptions.remove(&ident.def_id);
+                self.remove_assumption(ident.def_id);
                 branch_ty
             } else {
                 self.type_expr(branch)
@@ -156,7 +166,7 @@ impl<'ctx> TyChecker<'ctx> {
         let mut lhs_ty = expr_let.ret_ty.clone();
 
         for (arg, arg_ty) in expr_let.args.iter().rev() {
-            self.assumptions.insert(arg.def_id, arg_ty.clone());
+            self.add_assumption(arg.def_id, arg_ty.clone());
             lhs_ty = Ty::Fn(FnTy {
                 arg: Box::new(arg_ty.clone()),
                 ret: Box::new(lhs_ty),
@@ -167,21 +177,19 @@ impl<'ctx> TyChecker<'ctx> {
         self.add_constraint(expr_let.ret_ty.clone(), ret_ty, expr_let.lhs.span);
 
         for (arg, _) in expr_let.args.iter() {
-            self.assumptions.remove(&arg.def_id);
+            self.remove_assumption(arg.def_id);
         }
 
-        self.assumptions.insert(expr_let.lhs.def_id, lhs_ty);
+        self.add_assumption(expr_let.lhs.def_id, lhs_ty);
         let body_ty = self.type_expr(&expr_let.body);
-        self.assumptions.remove(&expr_let.lhs.def_id);
+        self.remove_assumption(expr_let.lhs.def_id);
 
         body_ty
     }
 
     fn type_expr_app(&mut self, expr_app: &ExprApp) -> Ty {
         let func_ty = self.type_expr(&expr_app.func);
-        println!("fn type is: {func_ty}");
         let arg_ty = self.type_expr(&expr_app.arg);
-        println!("arg type is: {arg_ty}");
         let ret_ty = self.lang.gen_var_ty(expr_app.span);
 
         self.add_constraint(

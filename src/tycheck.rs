@@ -13,15 +13,8 @@ use crate::{
 pub(crate) struct TyChecker<'ctx> {
     lang: &'ctx Lang,
     assumptions: HashMap<DefId, Ty>,
-    constraints: VecDeque<Constraint>,
+    constraints: Constraints<'ctx>,
     substitutions: Option<Substitutions>,
-}
-
-#[derive(Debug)]
-struct Constraint {
-    lhs: Ty,
-    rhs: Ty,
-    span: Span,
 }
 
 impl<'ctx> TyChecker<'ctx> {
@@ -29,7 +22,7 @@ impl<'ctx> TyChecker<'ctx> {
         Self {
             lang,
             assumptions: HashMap::new(),
-            constraints: VecDeque::new(),
+            constraints: Constraints::new(lang),
             substitutions: None,
         }
     }
@@ -46,7 +39,7 @@ impl<'ctx> TyChecker<'ctx> {
 
     pub(crate) fn infer_type(&mut self, expr: &mut Expr) -> Ty {
         let mut ty = self.type_expr(expr);
-        let subs = Substitutions::from_constraints(&mut self.constraints, self.lang);
+        let subs = self.constraints.unify();
         subs.substitute_ty(&mut ty);
         ty
     }
@@ -87,11 +80,13 @@ impl<'ctx> TyChecker<'ctx> {
         let expr_ty = self.type_expr(&expr_unary.expr);
         match expr_unary.op {
             UnOp::Neg => {
-                self.add_constraint(Ty::Int, expr_ty, expr_unary.expr.span());
+                self.constraints
+                    .add(Ty::Int, expr_ty, expr_unary.expr.span());
                 Ty::Int
             }
             UnOp::Not => {
-                self.add_constraint(Ty::Bool, expr_ty, expr_unary.expr.span());
+                self.constraints
+                    .add(Ty::Bool, expr_ty, expr_unary.expr.span());
                 Ty::Bool
             }
         }
@@ -100,39 +95,44 @@ impl<'ctx> TyChecker<'ctx> {
     fn type_expr_binary(&mut self, expr_binary: &ExprBinary) -> Ty {
         let lhs_ty = self.type_expr(&expr_binary.lhs);
         let rhs_ty = self.type_expr(&expr_binary.rhs);
-        self.add_constraint(lhs_ty.clone(), rhs_ty, expr_binary.span);
+        self.constraints
+            .add(lhs_ty.clone(), rhs_ty, expr_binary.span);
 
         match expr_binary.op {
             BinOp::Eq | BinOp::Ne => Ty::Bool,
             BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge => {
-                self.add_constraint(Ty::Int, lhs_ty.clone(), expr_binary.lhs.span());
+                self.constraints
+                    .add(Ty::Int, lhs_ty.clone(), expr_binary.lhs.span());
                 Ty::Bool
             }
             BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div => {
-                self.add_constraint(Ty::Int, lhs_ty.clone(), expr_binary.lhs.span());
+                self.constraints
+                    .add(Ty::Int, lhs_ty.clone(), expr_binary.lhs.span());
                 Ty::Int
             }
             BinOp::And | BinOp::Or => {
-                self.add_constraint(Ty::Bool, lhs_ty.clone(), expr_binary.lhs.span());
+                self.constraints
+                    .add(Ty::Bool, lhs_ty.clone(), expr_binary.lhs.span());
                 Ty::Bool
             }
-            _ => lhs_ty,
         }
     }
 
     fn type_expr_if(&mut self, expr_if: &ExprIf) -> Ty {
         let cond_ty = self.type_expr(&expr_if.cond);
-        self.add_constraint(Ty::Bool, cond_ty, expr_if.cond.span());
+        self.constraints.add(Ty::Bool, cond_ty, expr_if.cond.span());
 
         let do_ty = self.type_expr(&expr_if.do_branch);
         match expr_if.else_branch.as_deref() {
             Some(else_branch) => {
                 let else_ty = self.type_expr(else_branch);
-                self.add_constraint(do_ty.clone(), else_ty, else_branch.span());
+                self.constraints
+                    .add(do_ty.clone(), else_ty, else_branch.span());
                 do_ty
             }
             None => {
-                self.add_constraint(Ty::Unit, do_ty, expr_if.do_branch.span());
+                self.constraints
+                    .add(Ty::Unit, do_ty, expr_if.do_branch.span());
                 Ty::Unit
             }
         }
@@ -159,7 +159,7 @@ impl<'ctx> TyChecker<'ctx> {
         if let Some(ty) = branch_tys.pop() {
             let mut arms = expr_case.arms.iter().skip(1);
             while let (Some(branch_ty), Some((_, branch))) = (branch_tys.pop(), arms.next()) {
-                self.add_constraint(ty.clone(), branch_ty, branch.span());
+                self.constraints.add(ty.clone(), branch_ty, branch.span());
             }
 
             ty
@@ -195,10 +195,10 @@ impl<'ctx> TyChecker<'ctx> {
                 ret: Box::new(lhs_ty),
             });
         }
-        
-        let mut constraints: VecDeque<_> = self.constraints.drain(checkpoint..).collect();
+
+        let mut constraints = self.constraints.checkpoint(checkpoint);
         println!("Unifying {} constraints", constraints.len());
-        let subs = Substitutions::from_constraints(&mut constraints, self.lang);
+        let subs = constraints.unify();
         println!("Done Unifying");
 
         subs.substitute_ty(&mut lhs_ty);
@@ -229,7 +229,7 @@ impl<'ctx> TyChecker<'ctx> {
         let arg_ty = self.type_expr(&expr_app.arg);
         let ret_ty = self.lang.gen_var_ty(expr_app.span);
 
-        self.add_constraint(
+        self.constraints.add(
             func_ty,
             Ty::Fn(FnTy {
                 arg: Box::new(arg_ty),
@@ -240,15 +240,88 @@ impl<'ctx> TyChecker<'ctx> {
 
         ret_ty
     }
+}
 
-    fn add_constraint(&mut self, lhs: Ty, rhs: Ty, span: Span) {
+struct Constraints<'ctx> {
+    constraints: VecDeque<(Ty, Ty, Span)>,
+    lang: &'ctx Lang,
+}
+
+impl<'ctx> Constraints<'ctx> {
+    fn new(lang: &'ctx Lang) -> Self {
+        Self {
+            constraints: VecDeque::new(),
+            lang,
+        }
+    }
+
+    fn add(&mut self, lhs: Ty, rhs: Ty, span: Span) {
         let (line, col) = self.lang.source_map().map_offset(span.start());
         println!(
             "Adding constraint: {lhs} == {rhs} from {}:{}",
             line + 1,
             col + 1
         );
-        self.constraints.push_back(Constraint { lhs, rhs, span })
+        self.constraints.push_back((lhs, rhs, span))
+    }
+
+    fn len(&self) -> usize {
+        self.constraints.len()
+    }
+
+    fn checkpoint(&mut self, idx: usize) -> Self {
+        Self {
+            constraints: self.constraints.drain(idx..).collect(),
+            lang: self.lang,
+        }
+    }
+
+    fn replace(&mut self, var: VarTy, ty: &Ty) {
+        for (lhs, rhs, _) in &mut self.constraints {
+            replace(lhs, var, ty);
+            replace(rhs, var, ty);
+        }
+    }
+
+    fn unify(&mut self) -> Substitutions {
+        let mut substitutions = HashMap::new();
+
+        while let Some((lhs, rhs, span)) = self.constraints.pop_front() {
+            if lhs == rhs {
+                continue;
+            } else if let Ty::Var(lhs) = lhs {
+                let (line, col) = self.lang.source_map().map_offset(span.start());
+                println!(
+                    "Found substitution: {lhs} -> {rhs} from {}:{}",
+                    line + 1,
+                    col + 1
+                );
+                self.replace(lhs, &rhs);
+                substitutions.insert(lhs, rhs);
+            } else if let Ty::Var(rhs) = rhs {
+                let (line, col) = self.lang.source_map().map_offset(span.start());
+                println!(
+                    "Found substitution: {rhs} -> {lhs} from {}:{}",
+                    line + 1,
+                    col + 1
+                );
+                self.replace(rhs, &lhs);
+                substitutions.insert(rhs, lhs);
+            } else {
+                match (lhs, rhs) {
+                    (Ty::Fn(lhs), Ty::Fn(rhs)) => {
+                        self.add(*lhs.arg, *rhs.arg, span);
+                        self.add(*lhs.ret, *rhs.ret, span);
+                    }
+                    (lhs, rhs) => {
+                        self.lang
+                            .error(span, format!("Expected type {lhs}, found {rhs}."));
+                    }
+                }
+            }
+        }
+
+        Substitutions { substitutions }
     }
 }
 
@@ -257,68 +330,6 @@ struct Substitutions {
 }
 
 impl Substitutions {
-    fn from_constraints(constraints: &mut VecDeque<Constraint>, lang: &Lang) -> Self {
-        fn add_constraint(
-            constraints: &mut VecDeque<Constraint>,
-            lang: &Lang,
-            lhs: Ty,
-            rhs: Ty,
-            span: Span,
-        ) {
-            let (line, col) = lang.source_map().map_offset(span.start());
-            println!(
-                "Adding constraint: {lhs} == {rhs} from {}:{}",
-                line + 1,
-                col + 1
-            );
-            constraints.push_back(Constraint { lhs, rhs, span })
-        }
-
-        fn replace_in_constraints(constraints: &mut VecDeque<Constraint>, var: VarTy, ty: &Ty) {
-            for Constraint { lhs, rhs, .. } in constraints {
-                replace(lhs, var, ty);
-                replace(rhs, var, ty);
-            }
-        }
-
-        let mut substitutions = HashMap::new();
-
-        while let Some(Constraint { lhs, rhs, span }) = constraints.pop_front() {
-            if lhs == rhs {
-                continue;
-            } else if let Ty::Var(lhs) = lhs {
-                let (line, col) = lang.source_map().map_offset(span.start());
-                println!(
-                    "Found substitution: {lhs} -> {rhs} from {}:{}",
-                    line + 1,
-                    col + 1
-                );
-                replace_in_constraints(constraints, lhs, &rhs);
-                substitutions.insert(lhs, rhs);
-            } else if let Ty::Var(rhs) = rhs {
-                let (line, col) = lang.source_map().map_offset(span.start());
-                println!(
-                    "Found substitution: {rhs} -> {lhs} from {}:{}",
-                    line + 1,
-                    col + 1
-                );
-                replace_in_constraints(constraints, rhs, &lhs);
-                substitutions.insert(rhs, lhs);
-            } else {
-                match (lhs, rhs) {
-                    (Ty::Fn(lhs), Ty::Fn(rhs)) => {
-                        add_constraint(constraints, lang, *lhs.arg, *rhs.arg, span);
-                        add_constraint(constraints, lang, *lhs.ret, *rhs.ret, span);
-                    }
-                    (lhs, rhs) => {
-                        lang.error(span, format!("Expected type {lhs}, found {rhs}."));
-                    }
-                }
-            }
-        }
-
-        Self { substitutions }
-    }
     // fn substitute_expr(&self, expr: &mut Expr) {
     //     match expr {
     //         Expr::Lit(_) | Expr::Ident(_) => (),

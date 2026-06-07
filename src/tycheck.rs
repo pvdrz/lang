@@ -14,9 +14,10 @@ pub(crate) struct TyChecker<'ctx> {
     lang: &'ctx Lang,
     assumptions: HashMap<DefId, Ty>,
     constraints: VecDeque<Constraint>,
-    substitutions: HashMap<VarTy, Ty>,
+    substitutions: Option<Substitutions>,
 }
 
+#[derive(Debug)]
 struct Constraint {
     lhs: Ty,
     rhs: Ty,
@@ -29,7 +30,7 @@ impl<'ctx> TyChecker<'ctx> {
             lang,
             assumptions: HashMap::new(),
             constraints: VecDeque::new(),
-            substitutions: HashMap::new(),
+            substitutions: None,
         }
     }
 
@@ -45,14 +46,13 @@ impl<'ctx> TyChecker<'ctx> {
 
     pub(crate) fn infer_type(&mut self, expr: &mut Expr) -> Ty {
         let mut ty = self.type_expr(expr);
-        self.unify();
-        self.substitute_expr(expr);
-        self.substitute_ty(&mut ty);
+        let subs = Substitutions::from_constraints(&mut self.constraints, self.lang);
+        subs.substitute_ty(&mut ty);
         ty
     }
 
     fn type_expr(&mut self, expr: &Expr) -> Ty {
-        match expr {
+        let mut ty = match expr {
             Expr::Lit(literal) => self.type_literal(literal),
             Expr::Ident(ident) => self.type_ident(ident),
             Expr::Unary(expr_unary) => self.type_expr_unary(expr_unary),
@@ -61,7 +61,13 @@ impl<'ctx> TyChecker<'ctx> {
             Expr::Case(expr_case) => self.type_expr_case(expr_case),
             Expr::Let(expr_let) => self.type_expr_let(expr_let),
             Expr::Apply(expr_app) => self.type_expr_app(expr_app),
+        };
+
+        if let Some(subs) = self.substitutions.as_ref() {
+            subs.substitute_ty(&mut ty);
         }
+
+        ty
     }
 
     fn type_literal(&mut self, literal: &Literal) -> Ty {
@@ -163,28 +169,57 @@ impl<'ctx> TyChecker<'ctx> {
     }
 
     fn type_expr_let(&mut self, expr_let: &ExprLet) -> Ty {
-        let ret_ty = self.lang.gen_var_ty(expr_let.lhs.span);
-        let mut lhs_ty = ret_ty.clone();
+        // We're typing `let f x0 .. xn = t; body`
+        let mut arg_tys = Vec::new();
 
-        for arg in expr_let.args.iter().rev() {
+        println!("Typing let {} ..", expr_let.lhs.def_id.display(self.lang));
+        for arg in expr_let.args.iter() {
+            // Introduce a fresh type variable Xi for each xi.
             let arg_ty = self.lang.gen_var_ty(arg.span);
+            // Extend the assumptions with xi: Xi
             self.add_assumption(arg.def_id, arg_ty.clone());
+            arg_tys.push(arg_ty);
+        }
+
+        let checkpoint = self.constraints.len();
+
+        // Infer t: T. We call this `lhs_ty` because this will help build the type of `f`.
+        let mut lhs_ty = self.type_expr(&expr_let.rhs);
+
+        for (arg, arg_ty) in expr_let.args.iter().zip(arg_tys).rev() {
+            // Remove the assumption xi: Xi
+            self.remove_assumption(arg.def_id);
+            // Build `X0 -> .. -> Xn -> T`
             lhs_ty = Ty::Fn(FnTy {
                 arg: Box::new(arg_ty),
                 ret: Box::new(lhs_ty),
             });
         }
+        
+        let mut constraints: VecDeque<_> = self.constraints.drain(checkpoint..).collect();
+        println!("Unifying {} constraints", constraints.len());
+        let subs = Substitutions::from_constraints(&mut constraints, self.lang);
+        println!("Done Unifying");
 
-        let infered_ret_ty = self.type_expr(&expr_let.rhs);
-        self.add_constraint(ret_ty, infered_ret_ty, expr_let.lhs.span);
-
-        for arg in expr_let.args.iter() {
-            self.remove_assumption(arg.def_id);
-        }
-
+        subs.substitute_ty(&mut lhs_ty);
         self.add_assumption(expr_let.lhs.def_id, lhs_ty);
+        self.substitutions = Some(subs);
+
+        println!(
+            "HERE => {}: {}",
+            expr_let.lhs.def_id.display(self.lang),
+            self.type_expr(&Expr::Ident(expr_let.lhs))
+        );
+
         let body_ty = self.type_expr(&expr_let.body);
+
+        self.substitutions = None;
         self.remove_assumption(expr_let.lhs.def_id);
+
+        println!(
+            "Done typing let {} .., type of body is: {body_ty}",
+            expr_let.lhs.def_id.display(self.lang)
+        );
 
         body_ty
     }
@@ -215,111 +250,131 @@ impl<'ctx> TyChecker<'ctx> {
         );
         self.constraints.push_back(Constraint { lhs, rhs, span })
     }
+}
 
-    fn unify(&mut self) {
-        while let Some(Constraint { lhs, rhs, span }) = self.constraints.pop_front() {
+struct Substitutions {
+    substitutions: HashMap<VarTy, Ty>,
+}
+
+impl Substitutions {
+    fn from_constraints(constraints: &mut VecDeque<Constraint>, lang: &Lang) -> Self {
+        fn add_constraint(
+            constraints: &mut VecDeque<Constraint>,
+            lang: &Lang,
+            lhs: Ty,
+            rhs: Ty,
+            span: Span,
+        ) {
+            let (line, col) = lang.source_map().map_offset(span.start());
+            println!(
+                "Adding constraint: {lhs} == {rhs} from {}:{}",
+                line + 1,
+                col + 1
+            );
+            constraints.push_back(Constraint { lhs, rhs, span })
+        }
+
+        fn replace_in_constraints(constraints: &mut VecDeque<Constraint>, var: VarTy, ty: &Ty) {
+            for Constraint { lhs, rhs, .. } in constraints {
+                replace(lhs, var, ty);
+                replace(rhs, var, ty);
+            }
+        }
+
+        let mut substitutions = HashMap::new();
+
+        while let Some(Constraint { lhs, rhs, span }) = constraints.pop_front() {
             if lhs == rhs {
                 continue;
-            } else if let Ty::Var(x) = lhs {
-                let (line, col) = self.lang.source_map().map_offset(span.start());
+            } else if let Ty::Var(lhs) = lhs {
+                let (line, col) = lang.source_map().map_offset(span.start());
                 println!(
-                    "Unified constraint: {lhs} = {rhs} from {}:{}",
+                    "Found substitution: {lhs} -> {rhs} from {}:{}",
                     line + 1,
                     col + 1
                 );
-                self.replace(x, &rhs);
-                self.substitutions.insert(x, rhs);
-            } else if let Ty::Var(x) = rhs {
-                let (line, col) = self.lang.source_map().map_offset(span.start());
+                replace_in_constraints(constraints, lhs, &rhs);
+                substitutions.insert(lhs, rhs);
+            } else if let Ty::Var(rhs) = rhs {
+                let (line, col) = lang.source_map().map_offset(span.start());
                 println!(
-                    "Unified constraint: {lhs} = {rhs} from {}:{}",
+                    "Found substitution: {rhs} -> {lhs} from {}:{}",
                     line + 1,
                     col + 1
                 );
-                self.replace(x, &lhs);
-                self.substitutions.insert(x, lhs);
+                replace_in_constraints(constraints, rhs, &lhs);
+                substitutions.insert(rhs, lhs);
             } else {
                 match (lhs, rhs) {
                     (Ty::Fn(lhs), Ty::Fn(rhs)) => {
-                        self.add_constraint(*lhs.arg, *rhs.arg, span);
-                        self.add_constraint(*lhs.ret, *rhs.ret, span);
+                        add_constraint(constraints, lang, *lhs.arg, *rhs.arg, span);
+                        add_constraint(constraints, lang, *lhs.ret, *rhs.ret, span);
                     }
                     (lhs, rhs) => {
-                        self.lang
-                            .error(span, format!("Expected type {lhs}, found {rhs}."));
+                        lang.error(span, format!("Expected type {lhs}, found {rhs}."));
                     }
                 }
             }
         }
-    }
 
-    fn replace(&mut self, var: VarTy, ty: &Ty) {
-        for Constraint { lhs, rhs, .. } in &mut self.constraints {
-            replace(lhs, var, ty);
-            replace(rhs, var, ty);
-        }
+        Self { substitutions }
     }
-
-    fn substitute_expr(&self, expr: &mut Expr) {
-        match expr {
-            Expr::Lit(_) | Expr::Ident(_) => (),
-            Expr::Unary(expr_unary) => self.substitute_expr_unary(expr_unary),
-            Expr::Binary(expr_binary) => self.substitute_expr_binary(expr_binary),
-            Expr::If(expr_if) => self.substitute_expr_if(expr_if),
-            Expr::Case(expr_case) => self.substitute_expr_case(expr_case),
-            Expr::Let(expr_let) => self.substitute_expr_let(expr_let),
-            Expr::Apply(expr_app) => self.substitute_expr_app(expr_app),
-        }
-    }
-
-    fn substitute_expr_unary(&self, expr_unary: &mut ExprUnary) {
-        self.substitute_expr(&mut expr_unary.expr);
-    }
-
-    fn substitute_expr_binary(&self, expr_binary: &mut ExprBinary) {
-        self.substitute_expr(&mut expr_binary.lhs);
-        self.substitute_expr(&mut expr_binary.rhs);
-    }
-
-    fn substitute_expr_if(&self, expr_if: &mut ExprIf) {
-        self.substitute_expr(&mut expr_if.cond);
-        self.substitute_expr(&mut expr_if.do_branch);
-        if let Some(else_branch) = expr_if.else_branch.as_deref_mut() {
-            self.substitute_expr(else_branch);
-        }
-    }
-
-    fn substitute_expr_case(&self, expr_case: &mut ExprCase) {
-        self.substitute_expr(&mut expr_case.expr);
-
-        for (_, expr) in &mut expr_case.arms {
-            self.substitute_expr(expr);
-        }
-    }
-
-    fn substitute_expr_let(&self, expr_let: &mut ExprLet) {
-        self.substitute_expr(&mut expr_let.rhs);
-        self.substitute_expr(&mut expr_let.body);
-    }
-
-    fn substitute_expr_app(&self, expr_app: &mut ExprApp) {
-        self.substitute_expr(&mut expr_app.func);
-        self.substitute_expr(&mut expr_app.arg);
-    }
+    // fn substitute_expr(&self, expr: &mut Expr) {
+    //     match expr {
+    //         Expr::Lit(_) | Expr::Ident(_) => (),
+    //         Expr::Unary(expr_unary) => self.substitute_expr_unary(expr_unary),
+    //         Expr::Binary(expr_binary) => self.substitute_expr_binary(expr_binary),
+    //         Expr::If(expr_if) => self.substitute_expr_if(expr_if),
+    //         Expr::Case(expr_case) => self.substitute_expr_case(expr_case),
+    //         Expr::Let(expr_let) => self.substitute_expr_let(expr_let),
+    //         Expr::Apply(expr_app) => self.substitute_expr_app(expr_app),
+    //     }
+    // }
+    //
+    // fn substitute_expr_unary(&self, expr_unary: &mut ExprUnary) {
+    //     self.substitute_expr(&mut expr_unary.expr);
+    // }
+    //
+    // fn substitute_expr_binary(&self, expr_binary: &mut ExprBinary) {
+    //     self.substitute_expr(&mut expr_binary.lhs);
+    //     self.substitute_expr(&mut expr_binary.rhs);
+    // }
+    //
+    // fn substitute_expr_if(&self, expr_if: &mut ExprIf) {
+    //     self.substitute_expr(&mut expr_if.cond);
+    //     self.substitute_expr(&mut expr_if.do_branch);
+    //     if let Some(else_branch) = expr_if.else_branch.as_deref_mut() {
+    //         self.substitute_expr(else_branch);
+    //     }
+    // }
+    //
+    // fn substitute_expr_case(&self, expr_case: &mut ExprCase) {
+    //     self.substitute_expr(&mut expr_case.expr);
+    //
+    //     for (_, expr) in &mut expr_case.arms {
+    //         self.substitute_expr(expr);
+    //     }
+    // }
+    //
+    // fn substitute_expr_let(&self, expr_let: &mut ExprLet) {
+    //     self.substitute_expr(&mut expr_let.rhs);
+    //     self.substitute_expr(&mut expr_let.body);
+    // }
+    //
+    // fn substitute_expr_app(&self, expr_app: &mut ExprApp) {
+    //     self.substitute_expr(&mut expr_app.func);
+    //     self.substitute_expr(&mut expr_app.arg);
+    // }
 
     fn substitute_ty(&self, ty: &mut Ty) {
         match ty {
             Ty::Int | Ty::Float | Ty::String | Ty::Bool | Ty::Unit | Ty::Never => (),
-            Ty::Var(var) => match self.substitutions.get(var) {
-                Some(subs) => {
+            Ty::Var(var) => {
+                if let Some(subs) = self.substitutions.get(var) {
                     *ty = subs.clone();
                     self.substitute_ty(ty);
                 }
-                None => {
-                    self.lang
-                        .error(self.lang.var_ty_span(*var), "Cannot resolve type.");
-                }
-            },
+            }
             Ty::Fn(fn_ty) => {
                 self.substitute_ty(&mut fn_ty.ret);
                 self.substitute_ty(&mut fn_ty.arg);

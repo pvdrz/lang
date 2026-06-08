@@ -278,8 +278,8 @@ impl<'ctx> Constraints<'ctx> {
 
     fn replace(&mut self, var: VarTy, ty: &Ty) {
         for (lhs, rhs, _) in &mut self.constraints {
-            replace(lhs, var, ty);
-            replace(rhs, var, ty);
+            lhs.replace(var, ty);
+            rhs.replace(var, ty);
         }
     }
 
@@ -379,7 +379,8 @@ impl Substitutions {
 
     fn substitute_ty(&self, ty: &mut Ty) {
         match ty {
-            Ty::Int | Ty::Float | Ty::String | Ty::Bool | Ty::Unit | Ty::Never => (),
+            Ty::Skolem(_) | Ty::Int | Ty::Float | Ty::String | Ty::Bool | Ty::Unit | Ty::Never => {}
+            Ty::ForAll(forall_ty) => self.substitute_ty(&mut forall_ty.ty),
             Ty::Var(var) => {
                 if let Some(subs) = self.substitutions.get(var) {
                     *ty = subs.clone();
@@ -391,20 +392,5 @@ impl Substitutions {
                 self.substitute_ty(&mut fn_ty.arg);
             }
         }
-    }
-}
-
-fn replace(target: &mut Ty, var: VarTy, ty: &Ty) {
-    match target {
-        Ty::Var(x) => {
-            if *x == var {
-                *target = ty.clone();
-            }
-        }
-        Ty::Fn(fn_ty) => {
-            replace(&mut fn_ty.arg, var, ty);
-            replace(&mut fn_ty.ret, var, ty);
-        }
-        _ => (),
     }
 }

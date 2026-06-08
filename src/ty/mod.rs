@@ -1,4 +1,5 @@
 mod display;
+mod replace;
 
 use crate::def_gen;
 
@@ -17,23 +18,6 @@ pub(crate) enum Ty {
 }
 
 impl Ty {
-    fn replace_aux(&mut self, var: VarTy, ty: &Ty, skip: impl Fn(VarTy) -> bool + Copy) {
-        match self {
-            Ty::ForAll(forall_ty) => forall_ty.replace_aux(var, ty, skip),
-            Ty::Fn(fn_ty) => fn_ty.replace_aux(var, ty, skip),
-            Ty::Var(x) => {
-                if !skip(*x) && *x == var {
-                    *self = ty.clone();
-                }
-            }
-            Ty::Skolem(_) | Ty::Int | Ty::Float | Ty::String | Ty::Bool | Ty::Unit | Ty::Never => {}
-        }
-    }
-
-    pub(crate) fn replace(&mut self, var: VarTy, ty: &Ty) {
-        self.replace_aux(var, ty, |_| false);
-    }
-
     fn generalize_aux(&mut self, skip: impl Fn(VarTy) -> bool, vars: &mut Vec<VarTy>) {
         match self {
             Ty::ForAll(for_all_ty) => for_all_ty.ty.generalize_aux(skip, vars),
@@ -78,23 +62,10 @@ pub(crate) struct FnTy {
     pub(crate) ret: Box<Ty>,
 }
 
-impl FnTy {
-    fn replace_aux(&mut self, var: VarTy, ty: &Ty, skip: impl Fn(VarTy) -> bool + Copy) {
-        self.arg.replace_aux(var, ty, skip);
-        self.ret.replace_aux(var, ty, skip);
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ForAllTy {
     pub(crate) args: usize,
     pub(crate) ty: Box<Ty>,
-}
-
-impl ForAllTy {
-    fn replace_aux(&mut self, var: VarTy, ty: &Ty, skip: impl Fn(VarTy) -> bool + Copy) {
-        self.ty.replace_aux(var, ty, skip);
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

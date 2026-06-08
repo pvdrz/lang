@@ -181,18 +181,30 @@ impl<'ctx> Resolver<'ctx> {
         self.enter_scope();
 
         let lhs = self.bind(&expr_let.lhs);
-        let args = expr_let.args.iter().map(|arg| self.bind(arg)).collect();
+        let args: Vec<_> = expr_let.args.iter().map(|arg| self.bind(arg)).collect();
         let rhs = self.lower_expr(&expr_let.rhs);
         let body = self.lower_expr(&expr_let.body);
 
         self.exit_scope();
 
-        ir::ExprLet {
-            lhs,
-            args,
-            rhs: Box::new(rhs),
-            body: Box::new(body),
-            span: expr_let.span,
+        if args.is_empty() {
+            ir::ExprLet {
+                lhs,
+                rhs: Box::new(rhs),
+                body: Box::new(body),
+                span: expr_let.span,
+            }
+        } else {
+            ir::ExprLet {
+                lhs,
+                rhs: Box::new(ir::Expr::Fn(ir::ExprFn {
+                    args,
+                    body: Box::new(rhs),
+                    span: expr_let.rhs.span(),
+                })),
+                body: Box::new(body),
+                span: expr_let.span,
+            }
         }
     }
 

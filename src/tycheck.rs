@@ -3,8 +3,8 @@ use std::collections::{HashMap, HashSet, VecDeque, hash_map::Entry};
 use crate::{
     Lang,
     ir::{
-        BinOp, DefId, Expr, ExprApp, ExprBinary, ExprCase, ExprIf, ExprLet, ExprUnary, Ident,
-        Literal, LiteralKind, Pat, UnOp,
+        BinOp, DefId, Expr, ExprApp, ExprBinary, ExprCase, ExprFn, ExprIf, ExprLet, ExprUnary,
+        Ident, Literal, LiteralKind, Pat, UnOp,
     },
     source_map::Span,
     ty::{FnTy, Ty, VarTy},
@@ -28,12 +28,23 @@ impl<'ctx> TyChecker<'ctx> {
     }
 
     fn add_assumption(&mut self, def_id: DefId, ty: Ty) {
-        println!("Adding assumption: {}: {ty}", def_id.display(self.lang));
         self.assumptions.insert(def_id, ty);
+
+        print!("Adding assumption. Context now is {{");
+        for (x, ty) in &self.assumptions {
+            print!(" {}: {ty},", x.display(self.lang));
+        }
+        println!(" }}");
     }
 
     fn remove_assumption(&mut self, def_id: DefId) {
-        println!("Removing assumption for {}", def_id.display(self.lang));
+        self.assumptions.remove(&def_id);
+
+        print!("Removing assumption. Context now is {{");
+        for (x, ty) in &self.assumptions {
+            print!(" {}: {ty},", x.display(self.lang));
+        }
+        println!(" }}");
     }
 
     pub(crate) fn infer_type(&mut self, expr: &mut Expr) -> Ty {
@@ -52,6 +63,7 @@ impl<'ctx> TyChecker<'ctx> {
             Expr::If(expr_if) => self.type_expr_if(expr_if),
             Expr::Case(expr_case) => self.type_expr_case(expr_case),
             Expr::Let(expr_let) => self.type_expr_let(expr_let),
+            Expr::Fn(expr_fn) => self.type_expr_fn(expr_fn),
             Expr::Apply(expr_app) => self.type_expr_app(expr_app),
         };
 
@@ -178,39 +190,22 @@ impl<'ctx> TyChecker<'ctx> {
     }
 
     fn type_expr_let(&mut self, expr_let: &ExprLet) -> Ty {
-        // We're typing `let f x0 .. xn = t; body`
-        let mut arg_tys = Vec::new();
-
+        // We're typing `let lhs = rhs; body`
         println!("Typing let {} ..", expr_let.lhs.def_id.display(self.lang));
-        for arg in expr_let.args.iter() {
-            // Introduce a fresh type variable Xi for each xi.
-            let arg_ty = self.lang.gen_var_ty(arg.span);
-            // Extend the assumptions with xi: Xi
-            self.add_assumption(arg.def_id, arg_ty.clone());
-            arg_tys.push(arg_ty);
-        }
 
         let checkpoint = self.constraints.len();
 
-        // Infer t: T. We call this `lhs_ty` because this will help build the type of `f`.
-        let mut lhs_ty = self.type_expr(&expr_let.rhs);
+        // Infer rhs: S.
+        let mut rhs_ty = self.type_expr(&expr_let.rhs);
 
-        for (arg, arg_ty) in expr_let.args.iter().zip(arg_tys).rev() {
-            // Remove the assumption xi: Xi
-            self.remove_assumption(arg.def_id);
-            // Build `X0 -> .. -> Xn -> T`
-            lhs_ty = Ty::Fn(FnTy {
-                arg: Box::new(arg_ty),
-                ret: Box::new(lhs_ty),
-            });
-        }
-
+        // We only solve the constraints that involve the RHS.
         let mut constraints = self.constraints.checkpoint(checkpoint);
         println!("Unifying {} constraints", constraints.len());
         let subs = constraints.unify();
         println!("Done Unifying");
 
-        subs.substitute_ty(&mut lhs_ty);
+        // Now we apply the solution of the constraints to S to obtain a principal type T.
+        subs.substitute_ty(&mut rhs_ty);
 
         let mut skip_var_tys = HashSet::new();
 
@@ -218,23 +213,18 @@ impl<'ctx> TyChecker<'ctx> {
             ty.get_var_tys(&mut skip_var_tys);
         }
 
-        let before = lhs_ty.to_string();
-        lhs_ty.generalize(|var_ty| {
+        // Generalize T to forall X1..Xn. T where none of the Xi is mentioned in the typing context.
+        let before = rhs_ty.to_string();
+        rhs_ty.generalize(|var_ty| {
             skip_var_tys.contains(&var_ty) && {
                 println!("Skipping {var_ty} for generalization");
                 true
             }
         });
-        println!("Generalized {before} to {lhs_ty} ");
+        println!("Generalized {before} to {rhs_ty} ");
 
-        self.add_assumption(expr_let.lhs.def_id, lhs_ty);
+        self.add_assumption(expr_let.lhs.def_id, rhs_ty);
         self.substitutions = Some(subs);
-
-        println!(
-            "HERE => {}: {}",
-            expr_let.lhs.def_id.display(self.lang),
-            self.type_expr(&Expr::Ident(expr_let.lhs))
-        );
 
         let body_ty = self.type_expr(&expr_let.body);
 
@@ -247,6 +237,28 @@ impl<'ctx> TyChecker<'ctx> {
         );
 
         body_ty
+    }
+
+    fn type_expr_fn(&mut self, expr_fn: &ExprFn) -> Ty {
+        let mut arg_tys = Vec::new();
+
+        for arg in &expr_fn.args {
+            let arg_ty = self.lang.gen_var_ty(arg.span);
+            self.add_assumption(arg.def_id, arg_ty.clone());
+            arg_tys.push(arg_ty);
+        }
+
+        let mut ty = self.type_expr(&expr_fn.body);
+
+        for (arg, arg_ty) in expr_fn.args.iter().zip(arg_tys).rev() {
+            self.remove_assumption(arg.def_id);
+            ty = Ty::Fn(FnTy {
+                arg: Box::new(arg_ty),
+                ret: Box::new(ty),
+            });
+        }
+
+        ty
     }
 
     fn type_expr_app(&mut self, expr_app: &ExprApp) -> Ty {

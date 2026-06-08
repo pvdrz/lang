@@ -12,6 +12,7 @@ pub(crate) enum Expr {
     If(ExprIf),
     Case(ExprCase),
     Let(ExprLet),
+    Fn(ExprFn),
     Apply(ExprApp),
 }
 
@@ -25,6 +26,7 @@ impl Expr {
             Self::If(expr_if) => expr_if.span,
             Self::Case(expr_case) => expr_case.span,
             Self::Let(expr_let) => expr_let.span,
+            Self::Fn(expr_fn) => expr_fn.span,
             Self::Apply(expr_app) => expr_app.span,
         }
     }
@@ -63,8 +65,14 @@ pub(crate) struct ExprCase {
 #[derive(Debug)]
 pub(crate) struct ExprLet {
     pub(crate) lhs: Ident,
-    pub(crate) args: Vec<Ident>,
     pub(crate) rhs: Box<Expr>,
+    pub(crate) body: Box<Expr>,
+    pub(crate) span: Span,
+}
+
+#[derive(Debug)]
+pub(crate) struct ExprFn {
+    pub(crate) args: Vec<Ident>,
     pub(crate) body: Box<Expr>,
     pub(crate) span: Span,
 }

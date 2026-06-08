@@ -1,4 +1,4 @@
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque, hash_map::Entry};
 
 use crate::{
     Lang,
@@ -34,7 +34,6 @@ impl<'ctx> TyChecker<'ctx> {
 
     fn remove_assumption(&mut self, def_id: DefId) {
         println!("Removing assumption for {}", def_id.display(self.lang));
-        self.assumptions.remove(&def_id);
     }
 
     pub(crate) fn infer_type(&mut self, expr: &mut Expr) -> Ty {
@@ -58,6 +57,16 @@ impl<'ctx> TyChecker<'ctx> {
 
         if let Some(subs) = self.substitutions.as_ref() {
             subs.substitute_ty(&mut ty);
+        }
+
+        let before = ty.to_string();
+        match &mut ty {
+            Ty::ForAll(forall_ty) => {
+                let span = expr.span();
+                ty = forall_ty.instantiate(|| self.lang.gen_var_ty(span));
+                println!("Instantiating {before} to {ty}");
+            }
+            _ => {}
         }
 
         ty
@@ -202,6 +211,22 @@ impl<'ctx> TyChecker<'ctx> {
         println!("Done Unifying");
 
         subs.substitute_ty(&mut lhs_ty);
+
+        let mut skip_var_tys = HashSet::new();
+
+        for ty in self.assumptions.values() {
+            ty.get_var_tys(&mut skip_var_tys);
+        }
+
+        let before = lhs_ty.to_string();
+        lhs_ty.generalize(|var_ty| {
+            skip_var_tys.contains(&var_ty) && {
+                println!("Skipping {var_ty} for generalization");
+                true
+            }
+        });
+        println!("Generalized {before} to {lhs_ty} ");
+
         self.add_assumption(expr_let.lhs.def_id, lhs_ty);
         self.substitutions = Some(subs);
 

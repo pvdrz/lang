@@ -6,7 +6,7 @@ pub(crate) struct Name(usize);
 
 impl fmt::Display for Name {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "X{}", self.0)
+        write!(f, "S{}", self.0)
     }
 }
 
@@ -75,8 +75,8 @@ impl SkolemTy {
         _name_gen: &mut NameGen,
     ) -> fmt::Result {
         let index = vars.len() - self.debruijn - 1;
-        let name = vars[index][self.index];
-        name.fmt(f)
+        let name = &vars[index][self.index];
+        fmt::Display::fmt(name, f)
     }
 }
 

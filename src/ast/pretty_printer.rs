@@ -65,6 +65,7 @@ impl Visitor for PrettyPrinter<'_, '_> {
     }
 
     fn visit_literal(&mut self, expr_lit: &Literal) -> fmt::Result {
+        self.write_str("")?;
         match &expr_lit.kind {
             LiteralKind::Int(int) => write!(self.f, "{int}"),
             LiteralKind::Float(float) => write!(self.f, "{float}"),

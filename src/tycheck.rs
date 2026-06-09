@@ -185,6 +185,7 @@ impl<'ctx> TyChecker<'ctx> {
 
             ty
         } else {
+            self.constraints.add(Ty::Never, expr_ty, expr_case.expr.span());
             Ty::Never
         }
     }

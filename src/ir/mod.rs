@@ -1,4 +1,5 @@
 mod expr;
+mod visitor;
 
 use crate::Lang;
 pub(crate) use crate::ast::{BinOp, Literal, LiteralKind, UnOp};

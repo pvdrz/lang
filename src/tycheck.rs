@@ -197,8 +197,18 @@ impl<'ctx> TyChecker<'ctx> {
 
         let checkpoint = self.constraints.len();
 
+        // [recursive fns] Assume that lhs: X
+        let lhs_ty = self.lang.gen_var_ty(expr_let.lhs.span);
+        self.add_assumption(expr_let.lhs.def_id, lhs_ty.clone());
+
         // Infer rhs: S.
         let mut rhs_ty = self.type_expr(&expr_let.rhs);
+
+        self.remove_assumption(expr_let.lhs.def_id);
+
+        // [recursive fns] The lhs type must match the rhs type.
+        self.constraints
+            .add(lhs_ty, rhs_ty.clone(), expr_let.rhs.span());
 
         // We only solve the constraints that involve the RHS.
         let mut constraints = self.constraints.checkpoint(checkpoint);
@@ -219,11 +229,11 @@ impl<'ctx> TyChecker<'ctx> {
         let before = rhs_ty.to_string();
         rhs_ty.generalize(|var_ty| {
             skip_var_tys.contains(&var_ty) && {
-                println!("Skipping {var_ty} for generalization");
+                println!("Skipping {var_ty} for generalizing {before}");
                 true
             }
         });
-        println!("Generalized {before} to {rhs_ty} ");
+        println!("Generalized rhs type from {before} to {rhs_ty} ");
 
         self.add_assumption(expr_let.lhs.def_id, rhs_ty);
         self.substitutions = Some(subs);
@@ -329,23 +339,33 @@ impl<'ctx> Constraints<'ctx> {
             if lhs == rhs {
                 continue;
             } else if let Ty::Var(lhs) = lhs {
-                let (line, col) = self.lang.source_map().map_offset(span.start());
-                println!(
-                    "Found substitution: {lhs} -> {rhs} from {}:{}",
-                    line + 1,
-                    col + 1
-                );
-                self.replace(lhs, &rhs);
-                substitutions.insert(lhs, rhs);
+                if rhs.contains(lhs) {
+                    self.lang
+                        .error(span, format!("Found cyclic type: {rhs} contains {lhs}."));
+                } else {
+                    let (line, col) = self.lang.source_map().map_offset(span.start());
+                    println!(
+                        "Found substitution: {lhs} => {rhs} from {}:{}",
+                        line + 1,
+                        col + 1
+                    );
+                    self.replace(lhs, &rhs);
+                    substitutions.insert(lhs, rhs);
+                }
             } else if let Ty::Var(rhs) = rhs {
-                let (line, col) = self.lang.source_map().map_offset(span.start());
-                println!(
-                    "Found substitution: {rhs} -> {lhs} from {}:{}",
-                    line + 1,
-                    col + 1
-                );
-                self.replace(rhs, &lhs);
-                substitutions.insert(rhs, lhs);
+                if lhs.contains(rhs) {
+                    self.lang
+                        .error(span, format!("Found cyclic type: {lhs} contains {rhs}."));
+                } else {
+                    let (line, col) = self.lang.source_map().map_offset(span.start());
+                    println!(
+                        "Found substitution: {rhs} => {lhs} from {}:{}",
+                        line + 1,
+                        col + 1
+                    );
+                    self.replace(rhs, &lhs);
+                    substitutions.insert(rhs, lhs);
+                }
             } else {
                 match (lhs, rhs) {
                     (Ty::Fn(lhs), Ty::Fn(rhs)) => {

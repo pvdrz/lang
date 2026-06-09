@@ -74,6 +74,17 @@ impl Ty {
             Ty::Skolem(_) | Ty::Int | Ty::Float | Ty::String | Ty::Bool | Ty::Unit | Ty::Never => {}
         }
     }
+
+    pub(crate) fn contains(&self, var: VarTy) -> bool {
+        match self {
+            Ty::ForAll(for_all_ty) => for_all_ty.ty.contains(var),
+            Ty::Fn(fn_ty) => fn_ty.arg.contains(var) || fn_ty.ret.contains(var),
+            &Ty::Var(var_ty) => var_ty == var,
+            Ty::Skolem(_) | Ty::Int | Ty::Float | Ty::String | Ty::Bool | Ty::Unit | Ty::Never => {
+                false
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

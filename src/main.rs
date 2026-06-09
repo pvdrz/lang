@@ -20,7 +20,8 @@ use std::{
 };
 
 use crate::{
-    ast::pretty_printer::pretty_print,
+    ast::pretty_printer::pretty_print as ast_pretty_print,
+    ir::pretty_printer::pretty_print as ir_pretty_print,
     ir::{DefId, DefIdGen},
     lowering::Resolver,
     parser::Parser,
@@ -109,13 +110,17 @@ impl Lang {
         let Ok(file) = parser.parse() else {
             return;
         };
-        println!("== AST PARSING == \n\n{}\n", pretty_print(&file));
+        println!("== AST PARSING == \n\n{}\n", ast_pretty_print(&file));
 
         let mut resolver = Resolver::new(self);
         let mut file = resolver.lower_expr(&file);
         if *self.had_error.borrow() {
             return;
         }
+        println!(
+            "== LOWERING TO IR == \n\n{}\n",
+            ir_pretty_print(self, &file)
+        );
 
         println!("== TYPE CHECKING ==\n");
         let mut checker = TyChecker::new(self);

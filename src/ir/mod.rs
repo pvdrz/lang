@@ -1,5 +1,6 @@
 mod expr;
 mod visitor;
+pub(crate) mod pretty_printer;
 
 use crate::Lang;
 pub(crate) use crate::ast::{BinOp, Literal, LiteralKind, UnOp};

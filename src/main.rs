@@ -103,19 +103,21 @@ impl Lang {
             let _ = token.show(&mut w, &*self.source_map());
             w += "\n";
         }
-        println!("{w}");
+        println!("== TOKENIZATION ==\n\n{w}");
 
         let mut parser = Parser::new(tokens, self);
         let Ok(file) = parser.parse() else {
             return;
         };
-        println!("{}", pretty_print(&file));
+        println!("== AST PARSING == \n\n{}\n", pretty_print(&file));
 
         let mut resolver = Resolver::new(self);
         let mut file = resolver.lower_expr(&file);
         if *self.had_error.borrow() {
             return;
         }
+
+        println!("== TYPE CHECKING ==\n");
         let mut checker = TyChecker::new(self);
         let file_ty = checker.infer_type(&mut file);
         if *self.had_error.borrow() {

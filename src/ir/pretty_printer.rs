@@ -9,7 +9,7 @@ pub(crate) fn pretty_print<'a>(lang: &'a Lang, expr: &'a Expr) -> impl fmt::Disp
     struct PrettyPrintable<'a> {
         lang: &'a Lang,
         expr: &'a Expr,
-    };
+    }
 
     impl fmt::Display for PrettyPrintable<'_> {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

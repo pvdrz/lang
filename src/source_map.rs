@@ -5,8 +5,6 @@ pub(crate) struct Span {
 }
 
 impl Span {
-    pub(crate) const DUMMY: Self = Self::new(0, 0);
-
     pub(crate) const fn new(start: usize, end: usize) -> Self {
         Self { start, end }
     }

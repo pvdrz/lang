@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet, VecDeque, hash_map::Entry};
+use std::collections::{HashMap, HashSet, VecDeque};
 
 use crate::{
     Lang,
@@ -185,7 +185,8 @@ impl<'ctx> TyChecker<'ctx> {
 
             ty
         } else {
-            self.constraints.add(Ty::Never, expr_ty, expr_case.expr.span());
+            self.constraints
+                .add(Ty::Never, expr_ty, expr_case.expr.span());
             Ty::Never
         }
     }

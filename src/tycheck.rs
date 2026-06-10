@@ -1,4 +1,7 @@
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::{
+    collections::{HashMap, HashSet, VecDeque},
+    fmt,
+};
 
 use crate::{
     Lang,
@@ -12,7 +15,7 @@ use crate::{
 
 pub(crate) struct TyChecker<'ctx> {
     lang: &'ctx Lang,
-    assumptions: HashMap<DefId, Ty>,
+    assumptions: Assumptions<'ctx>,
     constraints: Constraints<'ctx>,
     substitutions: Option<Substitutions>,
 }
@@ -21,30 +24,10 @@ impl<'ctx> TyChecker<'ctx> {
     pub(crate) fn new(lang: &'ctx Lang) -> Self {
         Self {
             lang,
-            assumptions: HashMap::new(),
+            assumptions: Assumptions::new(lang),
             constraints: Constraints::new(lang),
             substitutions: None,
         }
-    }
-
-    fn add_assumption(&mut self, def_id: DefId, ty: Ty) {
-        self.assumptions.insert(def_id, ty);
-
-        print!("Adding assumption. Context now is {{");
-        for (x, ty) in &self.assumptions {
-            print!(" {}: {ty},", x.display(self.lang));
-        }
-        println!(" }}");
-    }
-
-    fn remove_assumption(&mut self, def_id: DefId) {
-        self.assumptions.remove(&def_id);
-
-        print!("Removing assumption. Context now is {{");
-        for (x, ty) in &self.assumptions {
-            print!(" {}: {ty},", x.display(self.lang));
-        }
-        println!(" }}");
     }
 
     pub(crate) fn infer_type(&mut self, expr: &mut Expr) -> Ty {
@@ -71,15 +54,17 @@ impl<'ctx> TyChecker<'ctx> {
             subs.substitute_ty(&mut ty);
         }
 
-        let before = ty.to_string();
-        match &mut ty {
-            Ty::ForAll(forall_ty) => {
-                let span = expr.span();
-                ty = forall_ty.instantiate(|| self.lang.gen_var_ty(span));
-                println!("Instantiating {before} to {ty}");
-            }
-            _ => {}
+        if let Ty::ForAll(forall_ty) = &mut ty {
+            let span = expr.span();
+            ty = forall_ty.instantiate(|| self.lang.gen_var_ty(span));
         }
+
+        println!(
+            "{} ⊢ {} : {ty} | {}",
+            self.assumptions,
+            crate::ir::pretty_printer::pretty_print(self.lang, expr, false),
+            self.constraints,
+        );
 
         ty
     }
@@ -94,7 +79,7 @@ impl<'ctx> TyChecker<'ctx> {
     }
 
     fn type_ident(&mut self, ident: &Ident) -> Ty {
-        self.assumptions[&ident.def_id].clone()
+        self.assumptions.type_def_id(ident.def_id)
     }
 
     fn type_expr_unary(&mut self, expr_unary: &ExprUnary) -> Ty {
@@ -166,9 +151,9 @@ impl<'ctx> TyChecker<'ctx> {
 
         for (pat, branch) in &expr_case.arms {
             let branch_ty = if let Pat::Ident(ident) = pat {
-                self.add_assumption(ident.def_id, expr_ty.clone());
+                self.assumptions.add(ident.def_id, expr_ty.clone());
                 let branch_ty = self.type_expr(branch);
-                self.remove_assumption(ident.def_id);
+                self.assumptions.remove(ident.def_id);
                 branch_ty
             } else {
                 self.type_expr(branch)
@@ -193,18 +178,17 @@ impl<'ctx> TyChecker<'ctx> {
 
     fn type_expr_let(&mut self, expr_let: &ExprLet) -> Ty {
         // We're typing `let lhs = rhs; body`
-        println!("Typing let {} ..", expr_let.lhs.def_id.display(self.lang));
 
         let checkpoint = self.constraints.len();
 
         // [recursive fns] Assume that lhs: X
         let lhs_ty = self.lang.gen_var_ty(expr_let.lhs.span);
-        self.add_assumption(expr_let.lhs.def_id, lhs_ty.clone());
+        self.assumptions.add(expr_let.lhs.def_id, lhs_ty.clone());
 
         // Infer rhs: S.
         let mut rhs_ty = self.type_expr(&expr_let.rhs);
 
-        self.remove_assumption(expr_let.lhs.def_id);
+        self.assumptions.remove(expr_let.lhs.def_id);
 
         // [recursive fns] The lhs type must match the rhs type.
         self.constraints
@@ -212,41 +196,23 @@ impl<'ctx> TyChecker<'ctx> {
 
         // We only solve the constraints that involve the RHS.
         let mut constraints = self.constraints.checkpoint(checkpoint);
-        println!("Unifying {} constraints", constraints.len());
         let subs = constraints.unify();
-        println!("Done Unifying");
 
         // Now we apply the solution of the constraints to S to obtain a principal type T.
         subs.substitute_ty(&mut rhs_ty);
 
-        let mut skip_var_tys = HashSet::new();
-
-        for ty in self.assumptions.values() {
-            ty.get_var_tys(&mut skip_var_tys);
-        }
+        let skip_var_tys = self.assumptions.get_type_vars();
 
         // Generalize T to forall X1..Xn. T where none of the Xi is mentioned in the typing context.
-        let before = rhs_ty.to_string();
-        rhs_ty.generalize(|var_ty| {
-            skip_var_tys.contains(&var_ty) && {
-                println!("Skipping {var_ty} for generalizing {before}");
-                true
-            }
-        });
-        println!("Generalized rhs type from {before} to {rhs_ty} ");
+        rhs_ty.generalize(|var_ty| skip_var_tys.contains(&var_ty));
 
-        self.add_assumption(expr_let.lhs.def_id, rhs_ty);
+        self.assumptions.add(expr_let.lhs.def_id, rhs_ty);
         self.substitutions = Some(subs);
 
         let body_ty = self.type_expr(&expr_let.body);
 
         self.substitutions = None;
-        self.remove_assumption(expr_let.lhs.def_id);
-
-        println!(
-            "Done typing let {} .., type of body is: {body_ty}",
-            expr_let.lhs.def_id.display(self.lang)
-        );
+        self.assumptions.remove(expr_let.lhs.def_id);
 
         body_ty
     }
@@ -256,14 +222,14 @@ impl<'ctx> TyChecker<'ctx> {
 
         for arg in &expr_fn.args {
             let arg_ty = self.lang.gen_var_ty(arg.span);
-            self.add_assumption(arg.def_id, arg_ty.clone());
+            self.assumptions.add(arg.def_id, arg_ty.clone());
             arg_tys.push(arg_ty);
         }
 
         let mut ty = self.type_expr(&expr_fn.body);
 
         for (arg, arg_ty) in expr_fn.args.iter().zip(arg_tys).rev() {
-            self.remove_assumption(arg.def_id);
+            self.assumptions.remove(arg.def_id);
             ty = Ty::Fn(FnTy {
                 arg: Box::new(arg_ty),
                 ret: Box::new(ty),
@@ -291,6 +257,59 @@ impl<'ctx> TyChecker<'ctx> {
     }
 }
 
+struct Assumptions<'ctx> {
+    assumptions: HashMap<DefId, Ty>,
+    lang: &'ctx Lang,
+}
+
+impl<'ctx> Assumptions<'ctx> {
+    fn new(lang: &'ctx Lang) -> Self {
+        Self {
+            assumptions: HashMap::new(),
+            lang,
+        }
+    }
+
+    fn add(&mut self, def_id: DefId, ty: Ty) {
+        self.assumptions.insert(def_id, ty);
+    }
+
+    fn remove(&mut self, def_id: DefId) {
+        self.assumptions.remove(&def_id);
+    }
+
+    fn type_def_id(&self, def_id: DefId) -> Ty {
+        self.assumptions[&def_id].clone()
+    }
+
+    fn get_type_vars(&self) -> HashSet<VarTy> {
+        let mut vars = HashSet::new();
+
+        for ty in self.assumptions.values() {
+            ty.get_var_tys(&mut vars);
+        }
+
+        vars
+    }
+}
+
+impl<'ctx> fmt::Display for Assumptions<'ctx> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("{")?;
+        let mut iter = self.assumptions.iter();
+
+        if let Some((def_id, ty)) = iter.next() {
+            write!(f, "{}: {ty}", def_id.display(self.lang))?;
+
+            for (def_id, ty) in iter {
+                write!(f, ", {}: {ty}", def_id.display(self.lang))?;
+            }
+        }
+
+        f.write_str("}")
+    }
+}
+
 struct Constraints<'ctx> {
     constraints: VecDeque<(Ty, Ty, Span)>,
     lang: &'ctx Lang,
@@ -305,12 +324,6 @@ impl<'ctx> Constraints<'ctx> {
     }
 
     fn add(&mut self, lhs: Ty, rhs: Ty, span: Span) {
-        let (line, col) = self.lang.source_map().map_offset(span.start());
-        println!(
-            "Adding constraint: {lhs} == {rhs} from {}:{}",
-            line + 1,
-            col + 1
-        );
         self.constraints.push_back((lhs, rhs, span))
     }
 
@@ -343,12 +356,6 @@ impl<'ctx> Constraints<'ctx> {
                     self.lang
                         .error(span, format!("Found cyclic type: {rhs} contains {lhs}."));
                 } else {
-                    let (line, col) = self.lang.source_map().map_offset(span.start());
-                    println!(
-                        "Found substitution: {lhs} => {rhs} from {}:{}",
-                        line + 1,
-                        col + 1
-                    );
                     self.replace(lhs, &rhs);
                     substitutions.insert(lhs, rhs);
                 }
@@ -357,12 +364,6 @@ impl<'ctx> Constraints<'ctx> {
                     self.lang
                         .error(span, format!("Found cyclic type: {lhs} contains {rhs}."));
                 } else {
-                    let (line, col) = self.lang.source_map().map_offset(span.start());
-                    println!(
-                        "Found substitution: {rhs} => {lhs} from {}:{}",
-                        line + 1,
-                        col + 1
-                    );
                     self.replace(rhs, &lhs);
                     substitutions.insert(rhs, lhs);
                 }
@@ -381,6 +382,23 @@ impl<'ctx> Constraints<'ctx> {
         }
 
         Substitutions { substitutions }
+    }
+}
+
+impl<'ctx> fmt::Display for Constraints<'ctx> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("{")?;
+        let mut iter = self.constraints.iter();
+
+        if let Some((lhs, rhs, _)) = iter.next() {
+            write!(f, "{lhs} = {rhs}")?;
+
+            for (lhs, rhs, _) in iter {
+                write!(f, ", {lhs} = {rhs}")?;
+            }
+        }
+
+        f.write_str("}")
     }
 }
 

@@ -119,7 +119,7 @@ impl Lang {
         }
         println!(
             "== LOWERING TO IR == \n\n{}\n",
-            ir_pretty_print(self, &file)
+            ir_pretty_print(self, &file, true)
         );
 
         println!("== TYPE CHECKING ==\n");
@@ -131,8 +131,7 @@ impl Lang {
 
         println!("Program has type: {file_ty}");
     }
-
-    fn source_map(&self) -> impl DerefMut<Target = SourceMap> {
+   fn source_map(&self) -> impl DerefMut<Target = SourceMap> {
         self.source_map.borrow_mut()
     }
 }

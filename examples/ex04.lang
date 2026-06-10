@@ -1,0 +1,7 @@
+let max x y = 
+    if x > y do
+        x
+    else
+        y
+    end;
+max

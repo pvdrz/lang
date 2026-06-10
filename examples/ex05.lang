@@ -1,0 +1,6 @@
+let max x y =
+    case x > y do
+        true -> x,
+        false -> y,
+    end;
+max

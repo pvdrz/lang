@@ -1,0 +1,6 @@
+let factorial x =
+    case x do
+        0 -> 1,
+        n -> n * factorial (x - 1),
+    end;
+factorial

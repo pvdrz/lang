@@ -1,0 +1,2 @@
+let f x = case x do end;
+f

@@ -5,10 +5,15 @@ use crate::{
     ir::{BinOp, Expr, Literal, LiteralKind, UnOp, visitor::Visitor},
 };
 
-pub(crate) fn pretty_print<'a>(lang: &'a Lang, expr: &'a Expr) -> impl fmt::Display + 'a {
+pub(crate) fn pretty_print<'a>(
+    lang: &'a Lang,
+    expr: &'a Expr,
+    insert_newlines: bool,
+) -> impl fmt::Display + 'a {
     struct PrettyPrintable<'a> {
         lang: &'a Lang,
         expr: &'a Expr,
+        insert_newlines: bool,
     }
 
     impl fmt::Display for PrettyPrintable<'_> {
@@ -18,12 +23,17 @@ pub(crate) fn pretty_print<'a>(lang: &'a Lang, expr: &'a Expr) -> impl fmt::Disp
                 f,
                 level: 0,
                 after_newline: false,
+                insert_newlines: self.insert_newlines,
             };
             pp.visit_expr(self.expr)
         }
     }
 
-    PrettyPrintable { lang, expr }
+    PrettyPrintable {
+        lang,
+        expr,
+        insert_newlines,
+    }
 }
 
 struct PrettyPrinter<'ctx, 'a> {
@@ -31,6 +41,7 @@ struct PrettyPrinter<'ctx, 'a> {
     f: &'ctx mut fmt::Formatter<'a>,
     level: usize,
     after_newline: bool,
+    insert_newlines: bool,
 }
 
 impl PrettyPrinter<'_, '_> {
@@ -50,9 +61,12 @@ impl PrettyPrinter<'_, '_> {
     }
 
     fn newline(&mut self) -> fmt::Result {
-        self.f.write_str("\n")?;
-        self.after_newline = true;
-        Ok(())
+        if self.insert_newlines {
+            self.after_newline = true;
+            self.f.write_str("\n")
+        } else {
+            self.f.write_str(" ")
+        }
     }
 
     fn indent(&mut self) {
@@ -101,7 +115,7 @@ impl Visitor for PrettyPrinter<'_, '_> {
             self.visit_pat(pat)?;
             self.write_str(" -> ")?;
             self.visit_expr(expr)?;
-            self.write_str(", ")?;
+            self.write_str(",")?;
             self.newline()?;
         }
 
